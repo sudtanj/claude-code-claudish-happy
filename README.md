@@ -1,10 +1,17 @@
 # claude-code-claudish-happy
 
-A single Docker image bundling three CLIs for an isolated coding-agent environment:
+A single Docker image, built on full Ubuntu 24.04, bundling three CLIs for an
+isolated coding-agent environment that can actually compile and run the code
+it writes:
 
 - **[Claude Code](https://claude.com/claude-code)** — Anthropic's coding agent (`claude`)
 - **[Claudish](https://claudish.com)** — run Claude Code against any model (OpenRouter, Gemini, OpenAI, Ollama, ...) via a local proxy (`claudish`)
 - **[Happy](https://github.com/slopus/happy)** — mobile/web control for Claude Code or Codex sessions (`happy`)
+
+Also includes a full dev toolchain: build-essential/cmake/gdb (C/C++), Python 3
++ pip/venv, Node.js 22, Go, Rust (via rustup), a JDK, git, sqlite3, and the
+usual CLI utilities (jq, ripgrep, tmux, vim, etc.). The `agent` user has
+passwordless `sudo` for ad hoc package installs.
 
 ## Build
 

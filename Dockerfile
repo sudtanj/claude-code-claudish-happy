@@ -1,36 +1,92 @@
 # syntax=docker/dockerfile:1
 
-# Isolated container bundling:
+# Isolated, full-featured Ubuntu dev environment bundling:
 #   - Claude Code       (@anthropic-ai/claude-code)
 #   - Claudish          (https://claudish.com / https://github.com/MadAppGang/claudish)
 #   - Happy CLI         (https://github.com/slopus/happy)
-FROM node:22-bookworm-slim
+# plus common compilers/interpreters so Claude Code can actually build and
+# run the code it writes (C/C++, Python, Go, Rust, Node), not just edit it.
+FROM ubuntu:24.04
 
 ARG USERNAME=agent
 ARG USER_UID=1000
 ARG USER_GID=1000
+ARG NODE_MAJOR=22
+ARG GO_VERSION=1.23.4
 
-# Base tooling the three CLIs (and their install scripts) expect at runtime:
-# git for repo work, curl/ca-certificates for installers and network calls,
-# ripgrep for Claude Code's file search, and build-essential/python3 for any
-# native npm modules pulled in transitively.
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8
+
+# Base OS tooling + full build/dev toolchain:
+#   - build-essential, cmake, pkg-config, gdb  -> compile & debug C/C++
+#   - python3/pip/venv                         -> run & build Python
+#   - default-jdk                              -> compile & run Java
+#   - git, curl, wget, unzip, jq, ripgrep, ...  -> everyday CLI/dev tooling
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        apt-transport-https \
+        autoconf \
+        automake \
+        build-essential \
         ca-certificates \
+        cmake \
         curl \
+        default-jdk \
+        gdb \
         git \
         gnupg \
+        htop \
+        jq \
         less \
+        libssl-dev \
+        libtool \
+        locales \
+        lsof \
+        make \
+        openssh-client \
+        pkg-config \
         procps \
         python3 \
+        python3-pip \
+        python3-venv \
         ripgrep \
-        build-essential \
-        openssh-client \
+        sqlite3 \
+        sudo \
+        tmux \
+        unzip \
         vim \
+        wget \
+        zip \
+        zsh \
+    && locale-gen en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root user the CLIs run as.
+# Node.js (required to run/install the npm-based CLIs below) from NodeSource.
+RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Go toolchain.
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz" -o /tmp/go.tar.gz \
+    && tar -C /usr/local -xzf /tmp/go.tar.gz \
+    && rm /tmp/go.tar.gz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Non-root user the CLIs and any compiled programs run as, with passwordless
+# sudo so build tooling (package installs, etc.) can still be used ad hoc.
 RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
-    && useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}"
+    && useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}" \
+    && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/"${USERNAME}" \
+    && chmod 0440 /etc/sudoers.d/"${USERNAME}"
+
+# Rust toolchain, installed as the non-root user (rustup's expected mode).
+USER ${USERNAME}
+ENV RUSTUP_HOME=/home/${USERNAME}/.rustup \
+    CARGO_HOME=/home/${USERNAME}/.cargo \
+    PATH="/home/${USERNAME}/.cargo/bin:${PATH}"
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+
+USER root
 
 # Global npm packages:
 #   claude-code -> `claude`
@@ -43,10 +99,14 @@ RUN npm install -g \
     && npm cache clean --force
 
 # Workspace the CLIs operate on. Owned by the non-root user so `claude`,
-# `claudish`, and `happy` can all write their local state/config dirs.
+# `claudish`, and `happy` can all write their local state/config dirs, and so
+# compiled artifacts land with sane ownership.
 ENV WORKDIR=/workspace
 RUN mkdir -p "${WORKDIR}" \
     && chown -R "${USERNAME}:${USERNAME}" "${WORKDIR}" /home/"${USERNAME}"
+
+COPY --chown=${USERNAME}:${USERNAME} entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 USER ${USERNAME}
 WORKDIR ${WORKDIR}
@@ -56,11 +116,6 @@ WORKDIR ${WORKDIR}
 # Anthropic use) or an OPENROUTER_API_KEY/GEMINI_API_KEY/OPENAI_API_KEY (for
 # claudish) at `docker run -e ...` time.
 ENV ANTHROPIC_API_KEY=sk-ant-api03-placeholder
-
-COPY --chown=${USERNAME}:${USERNAME} entrypoint.sh /usr/local/bin/entrypoint.sh
-USER root
-RUN chmod +x /usr/local/bin/entrypoint.sh
-USER ${USERNAME}
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["claude"]
