@@ -5,6 +5,7 @@ services:
     # Default command is `claude`; override per `docker compose run` invocation, e.g.:
     #   docker compose run --rm agent claudish --model openrouter@deepseek/deepseek-r1
     #   docker compose run --rm agent happy claude
+    #   docker compose run --rm agent claudish-happy --model openrouter@deepseek/deepseek-r1
     #   docker compose run --rm agent bash
     command: ["claude"]
     volumes:

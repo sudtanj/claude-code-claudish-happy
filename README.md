@@ -21,6 +21,7 @@ cp .env.example .env
 docker compose run --rm agent claude
 docker compose run --rm agent claudish --model openrouter@deepseek/deepseek-r1
 docker compose run --rm agent happy claude
+docker compose run --rm agent claudish-happy --model openrouter@deepseek/deepseek-r1
 docker compose run --rm agent bash
 ```
 
@@ -35,6 +36,7 @@ missing, rather than letting the CLI hang on a login prompt.
 | `claudish ...` | one of `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_HOST` |
 | `happy claude` | `ANTHROPIC_API_KEY` |
 | `happy codex` | `OPENAI_API_KEY` |
+| `claudish-happy ...` | one of `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_HOST` |
 
 See `.env.example` for the full list, and `docker-compose.yml` for where to
 put them for compose runs.
@@ -75,6 +77,24 @@ docker run -it --rm \
   -e ANTHROPIC_API_KEY=sk-ant-... \
   claude-code-claudish-happy happy claude
 ```
+
+Happy automatically connected to the Claude Code session running behind
+Claudish, so you get Claudish's any-model routing AND Happy's mobile/web
+control over the same session:
+
+```bash
+docker run -it --rm \
+  -v "$PWD":/workspace \
+  -e OPENROUTER_API_KEY=sk-or-v1-... \
+  claude-code-claudish-happy claudish-happy --model openrouter@deepseek/deepseek-r1
+```
+
+Under the hood, `claudish-happy` points Claudish's `$CLAUDE_PATH` at a small
+wrapper (`/usr/local/bin/claude-via-happy`) that runs `happy claude` instead
+of the real `claude` binary. Claudish's proxy env
+(`ANTHROPIC_BASE_URL`/placeholder `ANTHROPIC_API_KEY`) flows through that
+wrapper into the Claude Code process Happy spawns underneath it, so both
+tools end up attached to the same session.
 
 Drop into a shell with all three CLIs on `PATH`:
 

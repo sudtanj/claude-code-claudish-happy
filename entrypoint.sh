@@ -8,6 +8,10 @@ set -euo pipefail
 #   docker run ... claudish [args...]  # Claude Code via Claudish (any model)
 #   docker run ... happy claude        # Claude Code wrapped by Happy (mobile/web control)
 #   docker run ... happy codex         # Codex wrapped by Happy
+#   docker run ... claudish-happy [claudish args...]
+#                                       # Claudish's model proxy AND Happy's
+#                                       # mobile/web control, both in front of
+#                                       # the same Claude Code session
 #   docker run ... bash                # drop into a shell with all three CLIs on PATH
 #
 # Before exec'ing the requested CLI, this checks that the environment
@@ -56,6 +60,20 @@ case "${1:-claude}" in
         ;;
     claudish)
         require_one_of "claudish" OPENROUTER_API_KEY GEMINI_API_KEY OPENAI_API_KEY OLLAMA_HOST
+        ;;
+    claudish-happy)
+        require_one_of "claudish-happy" OPENROUTER_API_KEY GEMINI_API_KEY OPENAI_API_KEY OLLAMA_HOST
+        # claudish resolves the "claude" binary it launches via $CLAUDE_PATH
+        # (falling back to a normal PATH lookup); point it at a wrapper that
+        # runs `happy claude` instead of Claude Code directly. claudish's env
+        # setup (ANTHROPIC_BASE_URL, the placeholder ANTHROPIC_API_KEY, its
+        # --settings overlay, etc.) is inherited by that wrapper and, in
+        # turn, by the real Claude Code process happy spawns underneath it -
+        # so the model proxy and Happy's remote control both attach to the
+        # same session.
+        export CLAUDE_PATH=/usr/local/bin/claude-via-happy
+        shift
+        set -- claudish "$@"
         ;;
     happy)
         case "${2:-}" in

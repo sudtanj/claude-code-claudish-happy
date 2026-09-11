@@ -120,7 +120,8 @@ RUN mkdir -p "${WORKDIR}" \
     && chown -R "${USERNAME}:${USERNAME}" "${WORKDIR}" /home/"${USERNAME}"
 
 COPY --chown=${USERNAME}:${USERNAME} entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY --chown=${USERNAME}:${USERNAME} claude-via-happy.sh /usr/local/bin/claude-via-happy
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/claude-via-happy
 
 USER ${USERNAME}
 WORKDIR ${WORKDIR}
