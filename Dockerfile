@@ -121,7 +121,8 @@ RUN mkdir -p "${WORKDIR}" \
 
 COPY --chown=${USERNAME}:${USERNAME} entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY --chown=${USERNAME}:${USERNAME} claude-via-happy.sh /usr/local/bin/claude-via-happy
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/claude-via-happy
+COPY --chown=${USERNAME}:${USERNAME} configure-claudish-endpoints.sh /usr/local/bin/configure-claudish-endpoints
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/claude-via-happy /usr/local/bin/configure-claudish-endpoints
 
 USER ${USERNAME}
 WORKDIR ${WORKDIR}

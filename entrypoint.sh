@@ -19,6 +19,12 @@ set -euo pipefail
 # in docker-compose.yml or `docker run -e ...`), and fails fast with a clear
 # message instead of letting the CLI hang on a login prompt or die deep in
 # its own startup code.
+#
+# For `claudish` / `claudish-happy`, it also registers any custom
+# OpenAI-compatible / Anthropic-compatible endpoint given via
+# CUSTOM_OPENAI_BASE_URL / CUSTOM_ANTHROPIC_BASE_URL (+ optional
+# *_API_KEY) as Claudish "customEndpoints" named custom-openai /
+# custom-anthropic - see configure-claudish-endpoints.sh and .env.example.
 
 PLACEHOLDER="sk-ant-api03-placeholder"
 
@@ -59,10 +65,14 @@ case "${1:-claude}" in
         require_anthropic_key
         ;;
     claudish)
-        require_one_of "claudish" OPENROUTER_API_KEY GEMINI_API_KEY OPENAI_API_KEY OLLAMA_HOST
+        configure-claudish-endpoints
+        require_one_of "claudish" OPENROUTER_API_KEY GEMINI_API_KEY OPENAI_API_KEY OLLAMA_HOST \
+            CUSTOM_OPENAI_BASE_URL CUSTOM_ANTHROPIC_BASE_URL
         ;;
     claudish-happy)
-        require_one_of "claudish-happy" OPENROUTER_API_KEY GEMINI_API_KEY OPENAI_API_KEY OLLAMA_HOST
+        configure-claudish-endpoints
+        require_one_of "claudish-happy" OPENROUTER_API_KEY GEMINI_API_KEY OPENAI_API_KEY OLLAMA_HOST \
+            CUSTOM_OPENAI_BASE_URL CUSTOM_ANTHROPIC_BASE_URL
         # claudish resolves the "claude" binary it launches via $CLAUDE_PATH
         # (falling back to a normal PATH lookup); point it at a wrapper that
         # runs `happy claude` instead of Claude Code directly. claudish's env

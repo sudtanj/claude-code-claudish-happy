@@ -36,10 +36,32 @@ missing, rather than letting the CLI hang on a login prompt.
 | `claudish ...` | one of `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_HOST` |
 | `happy claude` | `ANTHROPIC_API_KEY` |
 | `happy codex` | `OPENAI_API_KEY` |
-| `claudish-happy ...` | one of `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_HOST` |
+| `claudish-happy ...` | one of `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_HOST`, `CUSTOM_OPENAI_BASE_URL`, `CUSTOM_ANTHROPIC_BASE_URL` |
 
 See `.env.example` for the full list, and `docker-compose.yml` for where to
 put them for compose runs.
+
+### Custom OpenAI-compatible / Anthropic-compatible endpoints
+
+For `claudish` / `claudish-happy`, you can point at your own self-hosted
+gateway, vLLM/LM Studio box, or Claude-compatible proxy instead of (or in
+addition to) a hosted provider, via:
+
+- `CUSTOM_OPENAI_BASE_URL` (+ optional `CUSTOM_OPENAI_API_KEY`)
+- `CUSTOM_ANTHROPIC_BASE_URL` (+ optional `CUSTOM_ANTHROPIC_API_KEY`)
+
+Each is independent - set only the one(s) you need. On startup the entrypoint
+registers whichever is set as a Claudish
+["customEndpoint"](https://claudish.com) named `custom-openai` /
+`custom-anthropic` in `~/.claudish/config.json` (merged with, not replacing,
+anything already there - so it's safe to run every start even with the
+`claudish-config` volume persisted). Omitting the `*_API_KEY` registers the
+endpoint with no auth header, for a local/trusted gateway. Use it with:
+
+```bash
+docker compose run --rm agent claudish --model custom-openai@<model-name>
+docker compose run --rm agent claudish --model custom-anthropic@<model-name>
+```
 
 ## Build
 
