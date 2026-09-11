@@ -10,5 +10,67 @@ set -euo pipefail
 #   docker run ... happy codex         # Codex wrapped by Happy
 #   docker run ... bash                # drop into a shell with all three CLIs on PATH
 #
-# Any command/args passed to `docker run` are exec'd directly.
+# Before exec'ing the requested CLI, this checks that the environment
+# variables that CLI needs were actually supplied (e.g. via `environment:`
+# in docker-compose.yml or `docker run -e ...`), and fails fast with a clear
+# message instead of letting the CLI hang on a login prompt or die deep in
+# its own startup code.
+
+PLACEHOLDER="sk-ant-api03-placeholder"
+
+die() {
+    echo "" >&2
+    echo "error: $1" >&2
+    echo "" >&2
+    exit 1
+}
+
+is_set() {
+    # true if the named env var is set and non-empty
+    local name="$1"
+    [ -n "${!name:-}" ]
+}
+
+require_one_of() {
+    # require_one_of "PURPOSE" VAR1 VAR2 ...
+    local purpose="$1"; shift
+    for var in "$@"; do
+        if is_set "$var"; then
+            return 0
+        fi
+    done
+    die "$purpose requires one of the following environment variables to be set: $*
+Set it in your docker-compose.yml 'environment:' block (or -e on 'docker run'). See .env.example."
+}
+
+require_anthropic_key() {
+    if ! is_set ANTHROPIC_API_KEY || [ "${ANTHROPIC_API_KEY}" = "${PLACEHOLDER}" ]; then
+        die "claude requires a real ANTHROPIC_API_KEY (the image only ships a placeholder to suppress the login dialog when using claudish).
+Set ANTHROPIC_API_KEY in your docker-compose.yml 'environment:' block. See .env.example."
+    fi
+}
+
+case "${1:-claude}" in
+    claude)
+        require_anthropic_key
+        ;;
+    claudish)
+        require_one_of "claudish" OPENROUTER_API_KEY GEMINI_API_KEY OPENAI_API_KEY OLLAMA_HOST
+        ;;
+    happy)
+        case "${2:-}" in
+            codex)
+                require_one_of "happy codex" OPENAI_API_KEY
+                ;;
+            claude|*)
+                require_anthropic_key
+                ;;
+        esac
+        ;;
+    *)
+        # Anything else (bash, sh, a custom command, ...) - run as-is,
+        # no env requirements enforced.
+        ;;
+esac
+
 exec "$@"

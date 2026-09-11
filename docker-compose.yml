@@ -1,0 +1,36 @@
+services:
+  agent:
+    build: .
+    image: claude-code-claudish-happy
+    # Default command is `claude`; override per `docker compose run` invocation, e.g.:
+    #   docker compose run --rm agent claudish --model openrouter@deepseek/deepseek-r1
+    #   docker compose run --rm agent happy claude
+    #   docker compose run --rm agent bash
+    command: ["claude"]
+    volumes:
+      - .:/workspace
+      # Persist each CLI's local config/auth across container restarts.
+      - claude-config:/home/agent/.claude
+      - claudish-config:/home/agent/.claudish
+      - happy-config:/home/agent/.happy
+    env_file:
+      # Copy .env.example to .env and fill in the keys the CLI you're
+      # running actually needs - the entrypoint checks for them and will
+      # fail fast with a clear message if a required one is missing.
+      - .env
+    environment:
+      # Uncomment/override any of these here instead of (or on top of) .env:
+      # ANTHROPIC_API_KEY: sk-ant-...
+      # OPENROUTER_API_KEY: sk-or-v1-...
+      # GEMINI_API_KEY: ...
+      # OPENAI_API_KEY: sk-...
+      # OLLAMA_HOST: http://host.docker.internal:11434
+      # CLAUDISH_PORT: 3000
+      TERM: xterm-256color
+    stdin_open: true
+    tty: true
+
+volumes:
+  claude-config:
+  claudish-config:
+  happy-config:

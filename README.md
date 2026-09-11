@@ -13,6 +13,32 @@ Also includes a full dev toolchain: build-essential/cmake/gdb (C/C++), Python 3
 usual CLI utilities (jq, ripgrep, tmux, vim, etc.). The `agent` user has
 passwordless `sudo` for ad hoc package installs.
 
+## Quick start with docker compose
+
+```bash
+cp .env.example .env
+# edit .env and fill in the keys for whichever CLI you plan to run
+docker compose run --rm agent claude
+docker compose run --rm agent claudish --model openrouter@deepseek/deepseek-r1
+docker compose run --rm agent happy claude
+docker compose run --rm agent bash
+```
+
+The entrypoint checks that the environment variables your chosen command
+needs are actually set (from `.env`, `environment:` in `docker-compose.yml`,
+or `docker run -e ...`) and fails fast with a clear message if one is
+missing, rather than letting the CLI hang on a login prompt.
+
+| Command | Required env var(s) |
+|---|---|
+| `claude` | `ANTHROPIC_API_KEY` |
+| `claudish ...` | one of `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_HOST` |
+| `happy claude` | `ANTHROPIC_API_KEY` |
+| `happy codex` | `OPENAI_API_KEY` |
+
+See `.env.example` for the full list, and `docker-compose.yml` for where to
+put them for compose runs.
+
 ## Build
 
 ```bash
