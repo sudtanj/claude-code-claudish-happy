@@ -9,8 +9,8 @@ it writes:
 - **[Happy](https://github.com/slopus/happy)** — mobile/web control for Claude Code or Codex sessions (`happy`)
 
 Also includes a full dev toolchain: build-essential/cmake/gdb (C/C++), Python 3
-+ pip/venv, Node.js 22, Go, Rust (via rustup), a JDK, git, sqlite3, and the
-usual CLI utilities (jq, ripgrep, tmux, vim, etc.). The `agent` user has
++ pip/venv, Node.js 22, Deno, Go, Rust (via rustup), a JDK, git, sqlite3, and
+the usual CLI utilities (jq, ripgrep, tmux, vim, etc.). The `agent` user has
 passwordless `sudo` for ad hoc package installs.
 
 ## Quick start with docker compose

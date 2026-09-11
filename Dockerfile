@@ -5,7 +5,8 @@
 #   - Claudish          (https://claudish.com / https://github.com/MadAppGang/claudish)
 #   - Happy CLI         (https://github.com/slopus/happy)
 # plus common compilers/interpreters so Claude Code can actually build and
-# run the code it writes (C/C++, Python, Go, Rust, Node), not just edit it.
+# run the code it writes (C/C++, Python, Go, Rust, Node, Deno), not just
+# edit it.
 FROM ubuntu:24.04
 
 ARG USERNAME=agent
@@ -13,6 +14,7 @@ ARG USER_UID=1000
 ARG USER_GID=1000
 ARG NODE_MAJOR=22
 ARG GO_VERSION=1.23.4
+ARG DENO_VERSION=v2.1.4
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=en_US.UTF-8 \
@@ -71,6 +73,18 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architect
     && tar -C /usr/local -xzf /tmp/go.tar.gz \
     && rm /tmp/go.tar.gz
 ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Deno runtime, installed system-wide from the official release archive.
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in \
+        amd64) DENO_ARCH=x86_64-unknown-linux-gnu ;; \
+        arm64) DENO_ARCH=aarch64-unknown-linux-gnu ;; \
+        *) echo "unsupported architecture for deno" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/denoland/deno/releases/download/${DENO_VERSION}/deno-${DENO_ARCH}.zip" -o /tmp/deno.zip \
+    && unzip -q /tmp/deno.zip -d /usr/local/bin \
+    && rm /tmp/deno.zip \
+    && chmod +x /usr/local/bin/deno
 
 # Non-root user the CLIs and any compiled programs run as, with passwordless
 # sudo so build tooling (package installs, etc.) can still be used ad hoc.
