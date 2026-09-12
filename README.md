@@ -65,6 +65,14 @@ docker compose run --rm agent claudish --model custom-anthropic@<model-name>
 
 ### Connecting to Happy (pairing your phone/browser)
 
+**Yes, Happy works together with Claude Code *and* Claudish at the same
+time** - that's what `claudish-happy` is for (see above): Claudish's
+any-model proxy sits underneath, and Happy's mobile/web control wraps that
+same session, not a separate one. Pairing is identical either way - `happy
+claude` and `claudish-happy` both end up starting Happy, which is the only
+part that ever does the pairing dance below. There's nothing Claudish-specific
+about it; the two features are independent and compose cleanly.
+
 Happy needs **no API key at all** - it authenticates by pairing a locally
 generated keypair to your account, not by an env var. The first time you run
 `happy claude` (or `claudish-happy`, or `happy codex`) with no saved Happy
@@ -109,10 +117,14 @@ container (headless deploys, CI, throwaway containers, or you just don't
 want to keep the `happy-config` volume around), you can bake that file's
 content into `docker-compose.yml`/`.env` instead:
 
-1. Pair once, interactively (needs `ANTHROPIC_API_KEY` set in `.env`, and a
-   real terminal - `docker compose run`, not `-d`):
+1. Pair once, interactively (needs a real terminal - `docker compose run`,
+   not `-d`). Use whichever command you actually plan to run day to day -
+   `happy claude` (needs `ANTHROPIC_API_KEY`) or `claudish-happy` (needs one
+   of Claudish's provider vars, e.g. `OPENROUTER_API_KEY`); both pair the
+   same way:
    ```bash
    docker compose run --rm agent happy claude
+   # or: docker compose run --rm agent claudish-happy --model openrouter@deepseek/deepseek-r1
    ```
    Happy first asks you to pick **mobile** or **web** auth (arrow keys +
    Enter). Mobile prints a QR code to scan with the [Happy mobile
