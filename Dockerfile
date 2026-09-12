@@ -16,15 +16,19 @@ ARG NODE_MAJOR=22
 ARG GO_VERSION=1.23.4
 ARG DENO_VERSION=v2.1.4
 
+# glibc's built-in C.UTF-8 gives UTF-8 locale support without installing the
+# (surprisingly not-tiny) `locales` package + running locale-gen.
 ENV DEBIAN_FRONTEND=noninteractive \
-    LANG=en_US.UTF-8 \
-    LC_ALL=en_US.UTF-8
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
 
 # Base OS tooling + full build/dev toolchain:
-#   - build-essential, cmake, pkg-config, gdb  -> compile & debug C/C++
-#   - python3/pip/venv                         -> run & build Python
-#   - default-jdk                              -> compile & run Java
-#   - git, curl, wget, unzip, jq, ripgrep, ...  -> everyday CLI/dev tooling
+#   - build-essential, cmake, pkg-config, gdb    -> compile & debug C/C++
+#   - python3/pip/venv                           -> run & build Python
+#   - default-jdk-headless                       -> compile & run Java (no
+#     AWT/Swing/X11 - fine for a headless container, and meaningfully
+#     smaller than default-jdk)
+#   - git, curl, wget, unzip, jq, ripgrep, ...    -> everyday CLI/dev tooling
 RUN apt-get update && apt-get install -y --no-install-recommends \
         apt-transport-https \
         autoconf \
@@ -33,7 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         cmake \
         curl \
-        default-jdk \
+        default-jdk-headless \
         gdb \
         git \
         gnupg \
@@ -42,7 +46,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         less \
         libssl-dev \
         libtool \
-        locales \
         lsof \
         make \
         openssh-client \
@@ -60,7 +63,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \
         zip \
         zsh \
-    && locale-gen en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js (required to run/install the npm-based CLIs below) from NodeSource.
@@ -113,11 +115,30 @@ USER root
 #   claude-code -> `claude`
 #   claudish    -> `claudish` (multi-model proxy in front of Claude Code)
 #   happy       -> `happy`    (mobile/web client wrapper: `happy claude`)
+#
+# `happy` bundles prebuilt ripgrep + difftastic archives for EVERY platform
+# it supports (darwin/linux/win32 x x64/arm64 = 12 files, ~106MB) directly
+# in its package tree (tools/archives/), not as npm optionalDependencies -
+# so npm installs all of them regardless of host platform. A Linux
+# container can only ever use the linux build for its own architecture;
+# delete the other 10 in the SAME layer as the install (deleting in a later
+# layer would not shrink the image - the files would still exist in this
+# layer's diff).
 RUN npm install -g \
         @anthropic-ai/claude-code \
         claudish \
         happy \
-    && npm cache clean --force
+    && npm cache clean --force \
+    && case "$(dpkg --print-architecture)" in \
+        amd64) HAPPY_ARCH=x64 ;; \
+        arm64) HAPPY_ARCH=arm64 ;; \
+        *) echo "unsupported architecture for happy" >&2; exit 1 ;; \
+    esac \
+    && HAPPY_ARCHIVES="$(npm root -g)/happy/tools/archives" \
+    && find "${HAPPY_ARCHIVES}" -type f \( -name 'ripgrep-*.tar.gz' -o -name 'difftastic-*.tar.gz' \) \
+        ! -name "ripgrep-${HAPPY_ARCH}-linux.tar.gz" \
+        ! -name "difftastic-${HAPPY_ARCH}-linux.tar.gz" \
+        -delete
 
 # Workspace the CLIs operate on. Owned by the non-root user so `claude`,
 # `claudish`, and `happy` can all write their local state/config dirs, and so

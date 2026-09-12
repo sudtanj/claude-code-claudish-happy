@@ -190,6 +190,39 @@ docker run -it --rm -v "$PWD":/workspace claude-code-claudish-happy bash
   different provider key; override it with a real key for direct Anthropic use.
 - Runs as a non-root user (`agent`) with `/workspace` as the working directory.
 
+## Image size
+
+This is a genuinely large image (~2.5GB) because it bundles multiple full
+compiler toolchains plus Claude Code's native binary. The two biggest
+contributors, in order:
+
+1. **Claude Code's native binary is installed twice** (~220MB each, ~440MB
+   total) - once directly (`@anthropic-ai/claude-code`, used by `claude`/
+   `claudish`), and once again bundled inside Happy's own copy
+   (`@anthropic-ai/claude-agent-sdk`, which Happy launches instead of the
+   global `claude`). This is architecturally how Happy works and isn't
+   something the Dockerfile can dedupe.
+2. **The language toolchains**: Rust (~700MB, even with rustup's minimal
+   profile), Go (~350MB), a JDK (~200-300MB, `default-jdk-headless`), Deno
+   (~120MB), and Node.js (~180MB).
+
+Already trimmed, at no functionality cost: `default-jdk` -> `default-jdk-headless`
+(drops X11/AWT-only dependencies Java doesn't need headless), `locales`
+package dropped in favor of glibc's built-in `C.UTF-8`, and ~86MB of dead
+weight removed from Happy's own package - it bundles prebuilt ripgrep +
+difftastic binaries for all 6 platform combinations it supports
+(darwin/linux/win32 x x64/arm64) directly in its files rather than as npm
+optionalDependencies, so a plain `npm install` pulls all 12 archives
+regardless of host platform; the Dockerfile deletes the 10 this Linux
+container can never use, in the same build layer they're installed in (so
+they don't just become invisible - they're actually gone from the image).
+
+The much bigger lever is **not installing a toolchain you don't use**. If
+you only write, say, Python and Node, drop the Go/Rust/Deno/JDK blocks from
+the Dockerfile entirely - each is a self-contained `RUN` block, easy to
+remove. Ask if you'd like help trimming it down to just what you actually
+need.
+
 ## CI/CD: auto-publish to Docker Hub
 
 [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)
