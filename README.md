@@ -194,13 +194,19 @@ docker run -it --rm -v "$PWD":/workspace claude-code-claudish-happy bash
 
 [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)
 builds and pushes this image to Docker Hub as
-[`sudtanj/claude-code-claudish-happy`](https://hub.docker.com/r/sudtanj/claude-code-claudish-happy)
-on every push to the tracked branch(es). Each run:
+[`sudtanj/claude-code-claudish-happy`](https://hub.docker.com/r/sudtanj/claude-code-claudish-happy),
+for **both `linux/amd64` and `linux/arm64`**, on every push to the tracked
+branch(es). Each run:
 
-1. Auto-bumps a semver git tag (patch by default, via
+1. **`tag` job** - auto-bumps a semver git tag (patch by default, via
    [`anothrNick/github-tag-action`](https://github.com/anothrNick/github-tag-action)).
-2. Builds the image (`linux/amd64`) and pushes it as both `:latest` and
-   `:<the new tag>` (e.g. `:v1.2.4`).
+2. **`build` job** (matrix: one runner per arch) - builds each architecture
+   **natively** (amd64 on a regular runner, arm64 on GitHub's native arm64
+   runner - no QEMU emulation, which this image's full dev toolchain would
+   make painfully slow) and pushes each as an untagged image, by digest.
+3. **`merge` job** - combines both digests into a single multi-arch manifest
+   and pushes it as both `:latest` and `:<the new tag>` (e.g. `:v1.2.4`) -
+   `docker pull` picks the right architecture automatically.
 
 **One-time setup before this will actually run:**
 
@@ -211,13 +217,14 @@ on every push to the tracked branch(es). Each run:
 2. Give the workflow's default token push access so the auto-tag step can
    push new tags: Settings -> Actions -> General -> Workflow permissions ->
    "Read and write permissions".
+3. Make sure GitHub-hosted arm64 runners (the `ubuntu-24.04-arm` label) are
+   available to this repo - free for public repos; on a private repo it
+   needs a plan that includes them. If that label isn't available, replace
+   the arm64 entry's `runner:` in the `build` job's matrix with
+   `ubuntu-latest` and add a `docker/setup-qemu-action` step - it'll still
+   work, just much slower (QEMU-emulated).
 
 The workflow currently triggers on pushes to `main` **and**
 `claude/gracious-ptolemy-p7fr2n` (this repo has no `main` branch yet - it's
 still the default). Once you have a real `main`, drop the second branch from
 the `on.push.branches` list.
-
-Multi-arch (`linux/arm64`) isn't built by default - this image's full dev
-toolchain (Go, Rust, a JDK, ...) makes a QEMU-emulated arm64 build slow
-enough to risk CI timeouts. Add `,linux/arm64` to the `platforms:` line in
-the workflow if you want it and can tolerate a much longer build.

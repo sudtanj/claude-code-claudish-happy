@@ -1,8 +1,11 @@
 name: Build and push Docker image
 
 # On every push to a tracked branch: auto-bump a semver git tag (patch by
-# default), then build the image and push it to Docker Hub as both
-# ":latest" and ":<the new tag>".
+# default), build linux/amd64 and linux/arm64 NATIVELY (one runner per
+# arch, no QEMU emulation - this image's full dev toolchain, build-essential,
+# a JDK, Go, Rust, Deno, would make an emulated arm64 build painfully slow),
+# then merge both into one multi-arch manifest and push it to Docker Hub as
+# both ":latest" and ":<the new tag>".
 #
 # Required repo secrets (Settings -> Secrets and variables -> Actions):
 #   DOCKERHUB_USERNAME  - Docker Hub username
@@ -13,6 +16,13 @@ name: Build and push Docker image
 # Also requires the repo's default GITHUB_TOKEN to have write access, so
 # the auto-tag step can push the new tag: Settings -> Actions -> General ->
 # Workflow permissions -> "Read and write permissions".
+#
+# Needs GitHub-hosted arm64 runners (the "ubuntu-24.04-arm" label) enabled
+# for this repo/account. Free for public repos; on a private repo it needs
+# a plan that includes them - if that label isn't available, replace the
+# arm64 job's `runs-on` with `ubuntu-latest` + a `docker/setup-qemu-action`
+# step and build both platforms in one job instead (slower, but works
+# anywhere).
 on:
   push:
     branches:
@@ -30,8 +40,12 @@ permissions:
   contents: write
 
 jobs:
-  build-and-push:
+  # Computed once, up front, so every arch builds and the final manifest all
+  # agree on the same version tag.
+  tag:
     runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.tag_version.outputs.new_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -46,6 +60,21 @@ jobs:
           WITH_V: true
           DEFAULT_BUMP: patch
 
+  build:
+    needs: tag
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -55,19 +84,59 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
+      # Pushed by digest only, untagged - the merge job below assembles the
+      # actual :latest / :<version> manifest list from these digests.
+      - name: Build and push (by digest)
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          # linux/amd64 only for now: this image's full dev toolchain
-          # (build-essential, JDK, Go, Rust, Deno, ...) makes a QEMU-emulated
-          # arm64 build slow enough to risk CI timeouts. Add
-          # ",linux/arm64" here if you need arm64 images and are fine with
-          # a much longer build.
-          platforms: linux/amd64
-          push: true
-          tags: |
-            ${{ env.DOCKERHUB_IMAGE }}:latest
-            ${{ env.DOCKERHUB_IMAGE }}:${{ steps.tag_version.outputs.new_tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.DOCKERHUB_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: [tag, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            -t "${DOCKERHUB_IMAGE}:latest" \
+            -t "${DOCKERHUB_IMAGE}:${{ needs.tag.outputs.new_tag }}" \
+            $(printf "${DOCKERHUB_IMAGE}@sha256:%s " *)
+
+      - name: Verify pushed manifest
+        run: docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:${{ needs.tag.outputs.new_tag }}"
