@@ -144,6 +144,54 @@ instead of using the hosted one:
 | `HAPPY_WEBAPP_URL` | `https://app.happy.engineering` | Web app the pairing link opens |
 | `HAPPY_HOME_DIR` | `~/.happy` | Where credentials/settings are stored |
 
+### Running Claude Code in the background (access via Happy later)
+
+`docker compose run --rm agent ...` is foreground and one-off - it exits
+when the command exits or your terminal disconnects. For "start it and come
+back to it from my phone later," use the **`agent-daemon`** service instead:
+
+```bash
+# 1. Pair Happy first (one-time, needs a real terminal - see "Connecting
+#    to Happy" above). Ctrl-C once you see your prompt.
+docker compose run --rm agent happy claude
+
+# 2. Grab the credential it printed, put it in .env as HAPPY_CREDENTIALS_B64=...
+
+# 3. Start the persistent background session:
+docker compose up -d agent-daemon
+```
+
+`agent-daemon` runs `happy claude` inside a detached `tmux` session (so
+Claude Code gets a real terminal to run in, whether or not the container
+itself has one attached) and keeps the container running indefinitely
+(`restart: unless-stopped`), independent of any attached terminal. From
+here, connect from the Happy app whenever you like - that's the whole
+point of Happy, and nothing container-specific about it.
+
+To peek at it locally (e.g. to check on progress, or approve a permission
+prompt without your phone handy):
+
+```bash
+docker compose exec agent-daemon tmux attach -t happy
+# Ctrl-b then d to detach without stopping it
+```
+
+Step 1 matters: an `agent-daemon` started before Happy is paired hits the
+same pairing prompt, but with nobody watching the pane - it prints the
+QR/link and exits almost immediately (the container stays up thanks to
+`restart: unless-stopped`, but the tmux session is just an empty dead pane
+until you attach, pair manually, and restart it, or pair via `agent` and
+restart `agent-daemon` instead). Pairing once via `agent` first avoids that.
+
+Want `claudish-happy` (any-model routing) running in the background instead
+of plain `happy claude`? Override the command:
+
+```bash
+docker compose run -d --name my-claudish-happy --no-deps \
+  -e OPENROUTER_API_KEY=sk-or-v1-... \
+  agent-daemon background claudish-happy --model openrouter@deepseek/deepseek-r1
+```
+
 ## Build
 
 ```bash

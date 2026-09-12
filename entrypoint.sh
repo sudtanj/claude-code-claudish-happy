@@ -12,6 +12,29 @@ set -euo pipefail
 #                                       # Claudish's model proxy AND Happy's
 #                                       # mobile/web control, both in front of
 #                                       # the same Claude Code session
+#   docker run ... background happy claude
+#   docker run ... background claudish-happy --model openrouter@deepseek/deepseek-r1
+#                                       # Runs the given command inside a
+#                                       # detached tmux session (a real pty,
+#                                       # so Claude Code's UI works whether
+#                                       # or not the container itself was
+#                                       # started with -it), then keeps the
+#                                       # container running indefinitely so
+#                                       # you can connect from the Happy
+#                                       # app later without an attached
+#                                       # terminal. Run with `docker compose
+#                                       # up -d` (not `run --rm`, which is
+#                                       # for one-off foreground use). Peek
+#                                       # at it locally any time with:
+#                                       #   docker exec -it <container> tmux attach -t happy
+#                                       # (Ctrl-b d to detach without
+#                                       # stopping it.) Pair Happy once,
+#                                       # interactively, BEFORE going this
+#                                       # route - see HAPPY_CREDENTIALS_B64
+#                                       # below; an unpaired background run
+#                                       # exits almost immediately after
+#                                       # printing the pairing QR/link into
+#                                       # a pane nobody's watching.
 #   docker run ... bash                # drop into a shell with all three CLIs on PATH
 #
 # Before exec'ing the requested CLI, this checks that the environment
@@ -143,6 +166,34 @@ case "${1:-claude}" in
                 require_anthropic_key
                 ;;
         esac
+        ;;
+    background)
+        shift
+        [ "$#" -eq 0 ] && die "background requires a command to run, e.g.: background happy claude"
+
+        SESSION_NAME="happy"
+        echo "" >&2
+        echo "[entrypoint] Starting '$*' in the background (tmux session '${SESSION_NAME}')." >&2
+        echo "[entrypoint] Peek at it any time with: docker exec -it <container> tmux attach -t ${SESSION_NAME}" >&2
+        echo "[entrypoint] (Ctrl-b d to detach without stopping it.)" >&2
+        echo "" >&2
+
+        # Re-invokes this SAME script with the given command, so all the
+        # usual env checks / Happy auth / Claudish endpoint setup above
+        # still run - just now inside a tmux pty instead of directly as
+        # PID 1. (tmux's server only stays up once a session exists, so
+        # this has to come before any `tmux set-option -g` - that alone
+        # doesn't reliably keep a fresh server alive.)
+        tmux new-session -d -s "$SESSION_NAME" -- /usr/local/bin/entrypoint.sh "$@"
+        # remain-on-exit: if the wrapped command exits (pairing needed and
+        # nobody's watching, a crash, ...) the pane's last screen stays
+        # inspectable via `tmux attach` instead of vanishing.
+        tmux set-option -t "$SESSION_NAME" remain-on-exit on
+
+        # PID 1 for the life of the container: keeps it running (for
+        # `docker compose up -d`) independent of whether the tmux session
+        # inside is still alive.
+        exec sleep infinity
         ;;
     *)
         # Anything else (bash, sh, a custom command, ...) - run as-is,
