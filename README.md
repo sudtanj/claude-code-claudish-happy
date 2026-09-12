@@ -146,9 +146,12 @@ instead of using the hosted one:
 
 ### Running Claude Code in the background (access via Happy later)
 
-`docker compose run --rm agent ...` is foreground and one-off - it exits
-when the command exits or your terminal disconnects. For "start it and come
-back to it from my phone later," use the **`agent-daemon`** service instead:
+There's just the one service/container (`agent`) - it's "batteries
+included": its **default command already runs Claude Code (via Happy) in
+the background**, so a plain `docker compose up -d` gives you a persistent
+session you connect to later from the Happy app, no separate service or
+extra flags needed. `docker compose run --rm agent <command>` still works
+for one-off interactive use (overriding that default), same as always.
 
 ```bash
 # 1. Pair Happy first (one-time, needs a real terminal - see "Connecting
@@ -157,48 +160,51 @@ docker compose run --rm agent happy claude
 
 # 2. Grab the credential it printed, put it in .env as HAPPY_CREDENTIALS_B64=...
 
-# 3. Start the persistent background session:
-docker compose up -d agent-daemon
+# 3. Start it persistently, using the default command:
+docker compose up -d
 ```
 
-`agent-daemon` runs `happy claude` inside a detached `tmux` session (so
-Claude Code gets a real terminal to run in, whether or not the container
-itself has one attached) and keeps the container running indefinitely
-(`restart: unless-stopped`), independent of any attached terminal. From
-here, connect from the Happy app whenever you like - that's the whole
-point of Happy, and nothing container-specific about it.
+Under the hood, the default command runs `happy claude` inside a detached
+`tmux` session (so Claude Code gets a real terminal to run in, whether or
+not the container itself has one attached), and the container itself keeps
+running indefinitely (`restart: unless-stopped`), independent of any
+attached terminal. From here, connect from the Happy app whenever you
+like - that's the whole point of Happy, and nothing container-specific
+about it.
 
 To peek at it locally (e.g. to check on progress, or approve a permission
 prompt without your phone handy):
 
 ```bash
-docker compose exec agent-daemon tmux attach -t happy
+docker compose exec agent tmux attach -t happy
 # Ctrl-b then d to detach without stopping it
 ```
 
-Step 1 matters: an `agent-daemon` started before Happy is paired hits the
-same pairing prompt, but with nobody watching the pane - it prints the
+Step 1 matters: running `docker compose up -d` before Happy is paired hits
+the same pairing prompt, but with nobody watching the pane - it prints the
 QR/link and exits almost immediately (the container stays up thanks to
 `restart: unless-stopped`, but the tmux session is just an empty dead pane
-until you attach, pair manually, and restart it, or pair via `agent` and
-restart `agent-daemon` instead). Pairing once via `agent` first avoids that.
+until you attach, pair manually, and restart it, or pair via step 1 and
+run `docker compose up -d --force-recreate` instead). Pairing once first
+avoids that.
 
 Want `claudish-happy` (any-model routing) running in the background instead
-of plain `happy claude`? Override the command:
+of plain `happy claude`? Override the command in `docker-compose.yml`:
 
-```bash
-docker compose run -d --name my-claudish-happy --no-deps \
-  -e OPENROUTER_API_KEY=sk-or-v1-... \
-  agent-daemon background claudish-happy --model openrouter@deepseek/deepseek-r1
+```yaml
+    command: ["background", "claudish-happy", "--model", "openrouter@deepseek/deepseek-r1"]
 ```
+
+(and make sure the provider key it needs, e.g. `OPENROUTER_API_KEY`, is set
+in `.env`), then `docker compose up -d`.
 
 #### Deploying on Portainer (or any orchestrator that never attaches a terminal)
 
-Neither compose file requests a pty/stdin anywhere (see the comment above
-the `agent` service) - both are safe to deploy as-is with `docker stack
-deploy` / Portainer's "Stacks" feature / `docker compose up -d`, with zero
-interactive input required at deploy time. The `agent-daemon` service is
-the one to deploy there; everything it needs comes from environment
+The compose file requests no pty/stdin anywhere (see the comment above the
+`command:` line) and its default command is already the background one
+above - so it's deployable as-is with `docker stack deploy` / Portainer's
+"Stacks" feature / `docker compose up -d`, with zero interactive input
+required at deploy time. Everything it needs comes from environment
 variables:
 
 1. **Pair Happy somewhere that has a real terminal first** - your own
@@ -211,11 +217,11 @@ variables:
    (Happy's pairing is inherently an approve-from-your-phone-or-browser
    flow), but it only has to happen once, and not on Portainer itself.
 2. In Portainer's stack environment variables (or your `.env`), set
-   `HAPPY_CREDENTIALS_B64` plus whichever provider key `agent-daemon`'s
-   command needs (`ANTHROPIC_API_KEY` for the default `happy claude`, or
-   e.g. `OPENROUTER_API_KEY` if you override the command to
-   `["background", "claudish-happy", "--model", "openrouter@..."]`).
-3. Deploy the stack. `agent-daemon` starts, seeds the Happy credential from
+   `HAPPY_CREDENTIALS_B64` plus whichever provider key the default command
+   needs (`ANTHROPIC_API_KEY` for `happy claude`, or e.g.
+   `OPENROUTER_API_KEY` if you changed the command to `claudish-happy` as
+   above).
+3. Deploy the stack. The container starts, seeds the Happy credential from
    the env var, skips pairing entirely, and runs headless from then on
    (`restart: unless-stopped`). Connect from the Happy app whenever.
 
