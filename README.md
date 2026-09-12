@@ -189,3 +189,35 @@ docker run -it --rm -v "$PWD":/workspace claude-code-claudish-happy bash
   doesn't block when you're routing everything through Claudish with a
   different provider key; override it with a real key for direct Anthropic use.
 - Runs as a non-root user (`agent`) with `/workspace` as the working directory.
+
+## CI/CD: auto-publish to Docker Hub
+
+[`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)
+builds and pushes this image to Docker Hub as
+[`sudtanj/claude-code-claudish-happy`](https://hub.docker.com/r/sudtanj/claude-code-claudish-happy)
+on every push to the tracked branch(es). Each run:
+
+1. Auto-bumps a semver git tag (patch by default, via
+   [`anothrNick/github-tag-action`](https://github.com/anothrNick/github-tag-action)).
+2. Builds the image (`linux/amd64`) and pushes it as both `:latest` and
+   `:<the new tag>` (e.g. `:v1.2.4`).
+
+**One-time setup before this will actually run:**
+
+1. Add two repo secrets (Settings -> Secrets and variables -> Actions):
+   - `DOCKERHUB_USERNAME` - your Docker Hub username
+   - `DOCKERHUB_TOKEN` - a Docker Hub access token with Read & Write scope
+     (Docker Hub -> Account Settings -> Security -> Personal access tokens)
+2. Give the workflow's default token push access so the auto-tag step can
+   push new tags: Settings -> Actions -> General -> Workflow permissions ->
+   "Read and write permissions".
+
+The workflow currently triggers on pushes to `main` **and**
+`claude/gracious-ptolemy-p7fr2n` (this repo has no `main` branch yet - it's
+still the default). Once you have a real `main`, drop the second branch from
+the `on.push.branches` list.
+
+Multi-arch (`linux/arm64`) isn't built by default - this image's full dev
+toolchain (Go, Rust, a JDK, ...) makes a QEMU-emulated arm64 build slow
+enough to risk CI timeouts. Add `,linux/arm64` to the `platforms:` line in
+the workflow if you want it and can tolerate a much longer build.
