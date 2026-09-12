@@ -88,7 +88,14 @@ RUN set -eux; \
 
 # Non-root user the CLIs and any compiled programs run as, with passwordless
 # sudo so build tooling (package installs, etc.) can still be used ad hoc.
-RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
+#
+# Ubuntu's official 24.04 base image ships its own "ubuntu" user/group at
+# uid/gid 1000, which collides with USER_UID/USER_GID's default of 1000
+# (useradd/groupadd fail with "UID/GID not unique", exit code 4). Remove it
+# first - `|| true` so this still works on a base image that doesn't have it.
+RUN userdel -r ubuntu 2>/dev/null || true \
+    && groupdel ubuntu 2>/dev/null || true \
+    && groupadd --gid "${USER_GID}" "${USERNAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}" \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/"${USERNAME}" \
     && chmod 0440 /etc/sudoers.d/"${USERNAME}"
