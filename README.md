@@ -302,6 +302,14 @@ docker run -it --rm -v "$PWD":/workspace claude-code-claudish-happy bash
   doesn't block when you're not using Anthropic directly; override it with a
   real key for direct Anthropic use.
 - Runs as a non-root user (`agent`) with `/workspace` as the working directory.
+- On every start, the entrypoint `sudo chown`s `~/.claude`, `~/.codex`, and
+  `~/.happy` back to the `agent` user before doing anything else. Their
+  named volumes can end up root-owned - e.g. a volume that already existed
+  from an older image build, before this image's non-root user was set up
+  the way it is now - and the Dockerfile's own `chown` at build time only
+  ever affects the image layer, not a volume mounted over that path later.
+  Without this, a stale volume silently produces `EACCES: permission
+  denied` the first time a CLI tries to write there.
 
 ## Image size
 

@@ -53,6 +53,23 @@ set -euo pipefail
 
 PLACEHOLDER="sk-ant-api03-placeholder"
 
+# Named volumes for ~/.claude, ~/.codex, and ~/.happy can end up owned by
+# someone other than the agent user - e.g. Docker initializes a FRESH named
+# volume by copying in the image path's own ownership, but a volume that
+# already existed (from an older image build, or touched by a different
+# UID) keeps whatever ownership it already had. The Dockerfile's own
+# `chown` at build time only ever affects the image layer, not a volume
+# mounted over that path at runtime - so a stale/pre-existing volume can
+# silently wedge every CLI with "EACCES: permission denied" on first
+# write. Fix it defensively on every start via the agent user's
+# passwordless sudo; cheap, idempotent, and makes this self-healing
+# instead of requiring a manual `docker exec ... chown`.
+for _dir in "$HOME/.claude" "$HOME/.codex" "$HOME/.happy"; do
+    sudo mkdir -p "$_dir"
+    sudo chown -R "$(id -un):$(id -gn)" "$_dir"
+done
+unset _dir
+
 die() {
     echo "" >&2
     echo "error: $1" >&2
