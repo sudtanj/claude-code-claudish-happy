@@ -192,6 +192,33 @@ docker compose run -d --name my-claudish-happy --no-deps \
   agent-daemon background claudish-happy --model openrouter@deepseek/deepseek-r1
 ```
 
+#### Deploying on Portainer (or any orchestrator that never attaches a terminal)
+
+Neither compose file requests a pty/stdin anywhere (see the comment above
+the `agent` service) - both are safe to deploy as-is with `docker stack
+deploy` / Portainer's "Stacks" feature / `docker compose up -d`, with zero
+interactive input required at deploy time. The `agent-daemon` service is
+the one to deploy there; everything it needs comes from environment
+variables:
+
+1. **Pair Happy somewhere that has a real terminal first** - your own
+   machine, a `docker compose run --rm agent happy claude` locally, or
+   Portainer's own container "Console" feature (which *does* give you an
+   interactive shell into a running container, separately from the stack's
+   own deploy-time config) to run `happy auth login` by hand. Either way,
+   you're only after the `HAPPY_CREDENTIALS_B64` value it prints - see
+   "Connecting to Happy" above. This one step can't be made non-interactive
+   (Happy's pairing is inherently an approve-from-your-phone-or-browser
+   flow), but it only has to happen once, and not on Portainer itself.
+2. In Portainer's stack environment variables (or your `.env`), set
+   `HAPPY_CREDENTIALS_B64` plus whichever provider key `agent-daemon`'s
+   command needs (`ANTHROPIC_API_KEY` for the default `happy claude`, or
+   e.g. `OPENROUTER_API_KEY` if you override the command to
+   `["background", "claudish-happy", "--model", "openrouter@..."]`).
+3. Deploy the stack. `agent-daemon` starts, seeds the Happy credential from
+   the env var, skips pairing entirely, and runs headless from then on
+   (`restart: unless-stopped`). Connect from the Happy app whenever.
+
 ## Build
 
 ```bash

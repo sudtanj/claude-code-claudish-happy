@@ -47,6 +47,16 @@ x-agent-common: &agent-common
 services:
   # One-off / interactive use: `docker compose -f docker-compose.hub.yml run --rm agent <command>`.
   # Exits when you exit the command (or your terminal disconnects).
+  #
+  # No stdin_open/tty here on purpose: `docker compose run` already
+  # allocates a pty itself when invoked from a real terminal, and NOT
+  # hardcoding it here means this service (and this whole file) stays
+  # deployable as-is by orchestrators that never attach a terminal at all
+  # (Portainer, `docker compose up -d`, etc.) - it simply runs headless
+  # there instead of erroring on an interactive requirement it can't
+  # satisfy. Everything it needs comes from `.env`/`environment:` below;
+  # see "Running Claude Code in the background" in the repo's README.md
+  # for the fully non-interactive, env-only path (agent-daemon).
   agent:
     <<: *agent-common
     # Default command is `claude`; override per `docker compose run` invocation, e.g.:
@@ -55,8 +65,6 @@ services:
     #   docker compose -f docker-compose.hub.yml run --rm agent claudish-happy --model openrouter@deepseek/deepseek-r1
     #   docker compose -f docker-compose.hub.yml run --rm agent bash
     command: ["claude"]
-    stdin_open: true
-    tty: true
 
   # Persistent / background use: `docker compose -f docker-compose.hub.yml up -d agent-daemon`.
   # Runs Claude Code (via Happy) inside a detached tmux session and keeps
