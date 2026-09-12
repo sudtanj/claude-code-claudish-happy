@@ -210,10 +210,12 @@ branch(es). Each run:
 
 **One-time setup before this will actually run:**
 
-1. Add two repo secrets (Settings -> Secrets and variables -> Actions):
-   - `DOCKERHUB_USERNAME` - your Docker Hub username
-   - `DOCKERHUB_TOKEN` - a Docker Hub access token with Read & Write scope
+1. Add a repo secret (Settings -> Secrets and variables -> Actions):
+   - `DOCKER_HUB_KEY` - a Docker Hub access token with Read & Write scope
      (Docker Hub -> Account Settings -> Security -> Personal access tokens)
+
+   The Docker Hub username (`sudtanj`) is hardcoded in the workflow rather
+   than kept as a secret, since it isn't sensitive.
 2. Give the workflow's default token push access so the auto-tag step can
    push new tags: Settings -> Actions -> General -> Workflow permissions ->
    "Read and write permissions".
@@ -224,7 +226,4 @@ branch(es). Each run:
    `ubuntu-latest` and add a `docker/setup-qemu-action` step - it'll still
    work, just much slower (QEMU-emulated).
 
-The workflow currently triggers on pushes to `main` **and**
-`claude/gracious-ptolemy-p7fr2n` (this repo has no `main` branch yet - it's
-still the default). Once you have a real `main`, drop the second branch from
-the `on.push.branches` list.
+The workflow triggers on pushes to `main`.
