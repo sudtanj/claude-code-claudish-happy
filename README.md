@@ -1,22 +1,25 @@
 # claude-code-claudish-happy
 
-A single Docker image, built on full Ubuntu 24.04, bundling three CLIs for an
-isolated coding-agent environment that can actually compile and run the code
-it writes:
+A single Docker image, built on full Ubuntu 24.04, bundling two coding
+agents plus mobile/web control for both, in an isolated environment that
+can actually compile and run the code it writes:
 
 - **[Claude Code](https://claude.com/claude-code)** — Anthropic's coding agent (`claude`)
-- **[Claudish](https://claudish.com)** — run Claude Code against any model (OpenRouter, Gemini, OpenAI, Ollama, ...) via a local proxy (`claudish`)
+- **[Codex CLI](https://github.com/openai/codex)** — OpenAI's coding agent (`codex`), with BYOK support for any OpenAI-Responses-API-compatible endpoint
 - **[Happy](https://github.com/slopus/happy)** — mobile/web control for Claude Code or Codex sessions (`happy`)
 
 Also includes a full dev toolchain: build-essential/cmake/gdb (C/C++), Python 3
-+ pip/venv, Node.js 22, Deno, Go, Bun, git, sqlite3, and the usual CLI
-utilities (jq, ripgrep, tmux, vim, etc.). The `agent` user has passwordless
-`sudo` for ad hoc package installs. (No Rust or Java - see "Image size"
-below for why and how to add them back if you need them.)
++ pip/venv, Node.js 22, Deno, Go, git, sqlite3, and the usual CLI utilities
+(jq, ripgrep, tmux, vim, etc.). The `agent` user has passwordless `sudo` for
+ad hoc package installs. (No Rust or Java - see "Image size" below for why
+and how to add them back if you need them.)
 
-Bun isn't just an extra language runtime here - **Claudish requires it**.
-Its launcher hard-requires the Bun runtime internally (`bun:ffi`,
-`Bun.spawn`), regardless of Node.js being installed.
+> This image previously routed non-Anthropic models through
+> [Claudish](https://claudish.com) instead of Codex. That's been dropped -
+> Claudish's launcher hard-requires the Bun runtime and, in practice, proved
+> more fragile than just using Codex CLI's own native BYOK support directly.
+> Codex CLI is a single official binary (no extra runtime dependency) and
+> `happy codex` is Happy's own first-class integration, not a workaround.
 
 ## Quick start with docker compose
 
@@ -39,9 +42,9 @@ docker compose run --rm agent claude
 
 # Or pull the published image instead - same commands, just add -f:
 docker compose -f docker-compose.hub.yml run --rm agent claude
-docker compose -f docker-compose.hub.yml run --rm agent claudish --model openrouter@deepseek/deepseek-r1
+docker compose -f docker-compose.hub.yml run --rm agent codex
 docker compose -f docker-compose.hub.yml run --rm agent happy claude
-docker compose -f docker-compose.hub.yml run --rm agent claudish-happy --model openrouter@deepseek/deepseek-r1
+docker compose -f docker-compose.hub.yml run --rm agent happy codex
 docker compose -f docker-compose.hub.yml run --rm agent bash
 ```
 
@@ -59,54 +62,58 @@ missing, rather than letting the CLI hang on a login prompt.
 | Command | Required env var(s) |
 |---|---|
 | `claude` | `ANTHROPIC_API_KEY` |
-| `claudish ...` | one of `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_HOST` |
+| `codex` | `OPENAI_API_KEY`, or `CODEX_BASE_URL` for BYOK |
 | `happy claude` | `ANTHROPIC_API_KEY` |
-| `happy codex` | `OPENAI_API_KEY` |
-| `claudish-happy ...` | one of `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_HOST`, `CUSTOM_OPENAI_BASE_URL`, `CUSTOM_ANTHROPIC_BASE_URL` |
+| `happy codex` | `OPENAI_API_KEY`, or `CODEX_BASE_URL` for BYOK |
 
 See `.env.example` for the full list, and `docker-compose.yml` for where to
 put them for compose runs.
 
-### Custom OpenAI-compatible / Anthropic-compatible endpoints
+### Codex BYOK: custom OpenAI-Responses-API-compatible endpoint
 
-For `claudish` / `claudish-happy`, you can point at your own self-hosted
-gateway, vLLM/LM Studio box, or Claude-compatible proxy instead of (or in
-addition to) a hosted provider, via:
+Point Codex at your own gateway (Azure OpenAI, LiteLLM, a corporate proxy,
+...) instead of `api.openai.com`, via:
 
-- `CUSTOM_OPENAI_BASE_URL` (+ optional `CUSTOM_OPENAI_API_KEY`)
-- `CUSTOM_ANTHROPIC_BASE_URL` (+ optional `CUSTOM_ANTHROPIC_API_KEY`)
+- `CODEX_BASE_URL` (required to do anything here)
+- `CODEX_API_KEY` (optional - a local/trusted gateway needs no key at all;
+  omitted means no auth header is sent)
+- `CODEX_MODEL` (optional - sets the default model)
 
-Each is independent - set only the one(s) you need. On startup the entrypoint
-registers whichever is set as a Claudish
-["customEndpoint"](https://claudish.com) named `custom-openai` /
-`custom-anthropic` in `~/.claudish/config.json` (merged with, not replacing,
-anything already there - so it's safe to run every start even with the
-`claudish-config` volume persisted). Omitting the `*_API_KEY` registers the
-endpoint with no auth header, for a local/trusted gateway. Use it with:
+On startup the entrypoint writes these into a clearly-delimited managed
+block in `~/.codex/config.toml` (Codex's own `[model_providers.custom]`
+mechanism), merged with - not replacing - anything else already in that
+file, so it's safe to run every start even with the `codex-config` volume
+persisted. Use it with:
 
 ```bash
-docker compose run --rm agent claudish --model custom-openai@<model-name>
-docker compose run --rm agent claudish --model custom-anthropic@<model-name>
+docker compose run --rm agent codex
+docker compose run --rm agent happy codex
 ```
+
+**Important caveat**: as of the Codex version this image installs, Codex
+CLI only speaks the newer **Responses API** (`/v1/responses`) - the older,
+far more common **Chat Completions** format (`/v1/chat/completions`) that
+most third-party "OpenAI-compatible" gateways (OpenRouter, vLLM, LM Studio,
+plain Ollama, ...) implement was removed upstream. Your endpoint has to
+actually support the Responses API, or requests will fail even though Codex
+itself starts fine and the config looks correct. Azure OpenAI and OpenAI's
+own API support it; check before assuming a given gateway does.
 
 ### Connecting to Happy (pairing your phone/browser)
 
-**Yes, Happy works together with Claude Code *and* Claudish at the same
-time** - that's what `claudish-happy` is for (see above): Claudish's
-any-model proxy sits underneath, and Happy's mobile/web control wraps that
-same session, not a separate one. Pairing is identical either way - `happy
-claude` and `claudish-happy` both end up starting Happy, which is the only
-part that ever does the pairing dance below. There's nothing Claudish-specific
-about it; the two features are independent and compose cleanly.
+**Yes, Happy works with both agents** - `happy claude` and `happy codex`
+are both first-class Happy commands (not something this image bolts on),
+and pairing is identical either way; it's the only part that ever does the
+pairing dance below.
 
 Happy needs **no API key at all** - it authenticates by pairing a locally
 generated keypair to your account, not by an env var. But this image doesn't
 just let Happy's own interactive pairing happen wherever it would normally
-fall (mid-startup, right before it launches Claude Code) - the entrypoint
+fall (mid-startup, right before it launches the agent) - the entrypoint
 detects up front whether a valid Happy credential exists and, if not, runs
-pairing **on its own, before Claude Code or Claudish ever start**:
+pairing **on its own, before Claude Code or Codex ever start**:
 
-1. Run `happy claude` (or `claudish-happy`, or `happy codex`) as normal.
+1. Run `happy claude` (or `happy codex`) as normal.
 2. If `~/.happy/access.key` doesn't exist yet, the entrypoint runs Happy's
    own `happy auth login` - a pairing-only subcommand that never touches
    Claude Code/Codex - instead of your actual command.
@@ -117,7 +124,7 @@ pairing **on its own, before Claude Code or Claudish ever start**:
    ```
    HAPPY_CREDENTIALS_B64=eyJ0b2tlbiI6...
    ```
-   and **exits without starting Claude Code or Claudish this run.**
+   and **exits without starting Claude Code or Codex this run.**
 5. Copy that line into `.env` (or `environment:` in `docker-compose.yml`),
    then re-run the exact same command - it now goes straight into your
    session, no pairing step.
@@ -135,8 +142,7 @@ That means:
   (`app.happy.engineering`) - those are just Happy's defaults; pairing works
   the same either way.
 - `HAPPY_CREDENTIALS_B64` is a credential (it grants control of your
-  Happy-linked Claude Code sessions) - keep it out of git, same as any API
-  key in `.env`.
+  Happy-linked sessions) - keep it out of git, same as any API key in `.env`.
 
 Only set these if you're self-hosting Happy's own server
 ([`happy-server`](https://github.com/slopus/happy/tree/main/packages/happy-server))
@@ -148,7 +154,7 @@ instead of using the hosted one:
 | `HAPPY_WEBAPP_URL` | `https://app.happy.engineering` | Web app the pairing link opens |
 | `HAPPY_HOME_DIR` | `~/.happy` | Where credentials/settings are stored |
 
-### Running Claude Code in the background (access via Happy later)
+### Running an agent in the background (access via Happy later)
 
 There's just the one service/container (`agent`) - it's "batteries
 included": its **default command already runs Claude Code (via Happy) in
@@ -169,8 +175,8 @@ docker compose up -d
 ```
 
 Under the hood, the default command runs `happy claude` inside a detached
-`tmux` session (so Claude Code gets a real terminal to run in, whether or
-not the container itself has one attached), and the container itself keeps
+`tmux` session (so the agent gets a real terminal to run in, whether or not
+the container itself has one attached), and the container itself keeps
 running indefinitely (`restart: unless-stopped`), independent of any
 attached terminal. From here, connect from the Happy app whenever you
 like - that's the whole point of Happy, and nothing container-specific
@@ -192,15 +198,15 @@ until you attach, pair manually, and restart it, or pair via step 1 and
 run `docker compose up -d --force-recreate` instead). Pairing once first
 avoids that.
 
-Want `claudish-happy` (any-model routing) running in the background instead
-of plain `happy claude`? Override the command in `docker-compose.yml`:
+Want Codex running in the background instead of Claude Code? Override the
+command in `docker-compose.yml`:
 
 ```yaml
-    command: ["background", "claudish-happy", "--model", "openrouter@deepseek/deepseek-r1"]
+    command: ["background", "happy", "codex"]
 ```
 
-(and make sure the provider key it needs, e.g. `OPENROUTER_API_KEY`, is set
-in `.env`), then `docker compose up -d`.
+(and make sure `OPENAI_API_KEY` or `CODEX_BASE_URL` is set in `.env`), then
+`docker compose up -d`.
 
 #### Deploying on Portainer (or any orchestrator that never attaches a terminal)
 
@@ -222,9 +228,8 @@ variables:
    flow), but it only has to happen once, and not on Portainer itself.
 2. In Portainer's stack environment variables (or your `.env`), set
    `HAPPY_CREDENTIALS_B64` plus whichever provider key the default command
-   needs (`ANTHROPIC_API_KEY` for `happy claude`, or e.g.
-   `OPENROUTER_API_KEY` if you changed the command to `claudish-happy` as
-   above).
+   needs (`ANTHROPIC_API_KEY` for `happy claude`, or e.g. `OPENAI_API_KEY`/
+   `CODEX_BASE_URL` if you changed the command to `happy codex` as above).
 3. Deploy the stack. The container starts, seeds the Happy credential from
    the env var, skips pairing entirely, and runs headless from then on
    (`restart: unless-stopped`). Connect from the Happy app whenever.
@@ -248,13 +253,23 @@ docker run -it --rm \
   claude-code-claudish-happy claude
 ```
 
-Claude Code via Claudish, using e.g. OpenRouter:
+Codex CLI, direct OpenAI API:
 
 ```bash
 docker run -it --rm \
   -v "$PWD":/workspace \
-  -e OPENROUTER_API_KEY=sk-or-v1-... \
-  claude-code-claudish-happy claudish --model openrouter@deepseek/deepseek-r1
+  -e OPENAI_API_KEY=sk-... \
+  claude-code-claudish-happy codex
+```
+
+Codex CLI via BYOK, against your own OpenAI-Responses-API-compatible endpoint:
+
+```bash
+docker run -it --rm \
+  -v "$PWD":/workspace \
+  -e CODEX_BASE_URL=https://my-gateway.internal/v1 \
+  -e CODEX_API_KEY=sk-... \
+  claude-code-claudish-happy codex
 ```
 
 Claude Code wrapped by Happy, for mobile/web control:
@@ -266,25 +281,16 @@ docker run -it --rm \
   claude-code-claudish-happy happy claude
 ```
 
-Happy automatically connected to the Claude Code session running behind
-Claudish, so you get Claudish's any-model routing AND Happy's mobile/web
-control over the same session:
+Codex wrapped by Happy instead:
 
 ```bash
 docker run -it --rm \
   -v "$PWD":/workspace \
-  -e OPENROUTER_API_KEY=sk-or-v1-... \
-  claude-code-claudish-happy claudish-happy --model openrouter@deepseek/deepseek-r1
+  -e OPENAI_API_KEY=sk-... \
+  claude-code-claudish-happy happy codex
 ```
 
-Under the hood, `claudish-happy` points Claudish's `$CLAUDE_PATH` at a small
-wrapper (`/usr/local/bin/claude-via-happy`) that runs `happy claude` instead
-of the real `claude` binary. Claudish's proxy env
-(`ANTHROPIC_BASE_URL`/placeholder `ANTHROPIC_API_KEY`) flows through that
-wrapper into the Claude Code process Happy spawns underneath it, so both
-tools end up attached to the same session.
-
-Drop into a shell with all three CLIs on `PATH`:
+Drop into a shell with all the CLIs on `PATH`:
 
 ```bash
 docker run -it --rm -v "$PWD":/workspace claude-code-claudish-happy bash
@@ -293,8 +299,8 @@ docker run -it --rm -v "$PWD":/workspace claude-code-claudish-happy bash
 ## Notes
 
 - The image sets a placeholder `ANTHROPIC_API_KEY` so Claude Code's login dialog
-  doesn't block when you're routing everything through Claudish with a
-  different provider key; override it with a real key for direct Anthropic use.
+  doesn't block when you're not using Anthropic directly; override it with a
+  real key for direct Anthropic use.
 - Runs as a non-root user (`agent`) with `/workspace` as the working directory.
 
 ## Image size
@@ -311,18 +317,25 @@ saving roughly **~877MB**:
   `openjdk-*-jre-headless`, `openjdk-*-jdk-headless`, etc.): computed from
   the real apt dependency closure - **~300MB**.
 
-That puts the image in the **~1.6-1.7GB** range. What's left, roughly:
+That put the image around **~1.6-1.7GB**. Swapping Claudish (+ the Bun
+runtime it required, ~76MB) for Codex CLI's own native binary (~323MB, per
+`npm view`) added roughly **+250MB** back, since Codex's binary is
+substantially larger than Bun + Claudish combined - putting the image
+around **~1.9-2.0GB**. What's in it, roughly:
 
 1. **Claude Code's native binary, installed twice** (~220MB each, ~440MB
-   total) - once directly (`@anthropic-ai/claude-code`, used by `claude`/
-   `claudish`), and once again bundled inside Happy's own copy
+   total) - once directly (`@anthropic-ai/claude-code`, used by `claude`),
+   and once again bundled inside Happy's own copy
    (`@anthropic-ai/claude-agent-sdk`, which Happy launches instead of the
    global `claude`). This is architecturally how Happy works and isn't
    something the Dockerfile can dedupe.
-2. **Go** (~350MB) and **Deno** (~120MB), the two remaining language
+2. **Codex CLI's native binary** (~323MB) - unlike Claude Code, Happy spawns
+   the system `codex` directly (no bundled duplicate), so this one isn't
+   doubled.
+3. **Go** (~350MB) and **Deno** (~120MB), the two remaining language
    runtimes, plus **Node.js** (~180MB, required to run the npm-based CLIs
    themselves - not optional).
-3. The base OS + C/C++ toolchain (build-essential, cmake, gdb, etc.) and
+4. The base OS + C/C++ toolchain (build-essential, cmake, gdb, etc.) and
    everyday CLI utilities.
 
 Already-applied, no-functionality-cost trims: `locales` package dropped in

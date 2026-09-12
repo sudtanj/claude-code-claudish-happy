@@ -2,12 +2,13 @@
 
 # Isolated, full-featured Ubuntu dev environment bundling:
 #   - Claude Code       (@anthropic-ai/claude-code)
-#   - Claudish          (https://claudish.com / https://github.com/MadAppGang/claudish)
+#   - Codex CLI         (@openai/codex) - BYOK: point it at any
+#                        OpenAI-Responses-API-compatible endpoint via
+#                        CODEX_BASE_URL / CODEX_API_KEY, see
+#                        configure-codex-provider.sh
 #   - Happy CLI         (https://github.com/slopus/happy)
 # plus common compilers/interpreters so Claude Code can actually build and
-# run the code it writes (C/C++, Python, Go, Node, Deno, Bun), not just
-# edit it. Bun is also a hard runtime requirement for claudish itself, not
-# just an optional language runtime - see the Bun install step below.
+# run the code it writes (C/C++, Python, Go, Node, Deno), not just edit it.
 FROM ubuntu:24.04
 
 ARG USERNAME=agent
@@ -16,7 +17,6 @@ ARG USER_GID=1000
 ARG NODE_MAJOR=22
 ARG GO_VERSION=1.23.4
 ARG DENO_VERSION=v2.1.4
-ARG BUN_VERSION=1.4.2
 
 # glibc's built-in C.UTF-8 gives UTF-8 locale support without installing the
 # (surprisingly not-tiny) `locales` package + running locale-gen.
@@ -86,22 +86,6 @@ RUN set -eux; \
     && rm /tmp/deno.zip \
     && chmod +x /usr/local/bin/deno
 
-# Bun runtime, installed system-wide from the official release archive.
-# Required by claudish - it uses Bun-specific APIs internally (bun:ffi,
-# Bun.spawn) and its launcher hard-requires Bun even though its own
-# package.json lists Node as a supported engine too.
-RUN set -eux; \
-    case "$(dpkg --print-architecture)" in \
-        amd64) BUN_ARCH=linux-x64 ;; \
-        arm64) BUN_ARCH=linux-aarch64 ;; \
-        *) echo "unsupported architecture for bun" >&2; exit 1 ;; \
-    esac; \
-    curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-${BUN_ARCH}.zip" -o /tmp/bun.zip \
-    && unzip -q /tmp/bun.zip -d /tmp/bun-extracted \
-    && mv "/tmp/bun-extracted/bun-${BUN_ARCH}/bun" /usr/local/bin/bun \
-    && rm -rf /tmp/bun.zip /tmp/bun-extracted \
-    && chmod +x /usr/local/bin/bun
-
 # Non-root user the CLIs and any compiled programs run as, with passwordless
 # sudo so build tooling (package installs, etc.) can still be used ad hoc.
 #
@@ -118,8 +102,11 @@ RUN userdel -r ubuntu 2>/dev/null || true \
 
 # Global npm packages:
 #   claude-code -> `claude`
-#   claudish    -> `claudish` (multi-model proxy in front of Claude Code)
-#   happy       -> `happy`    (mobile/web client wrapper: `happy claude`)
+#   codex       -> `codex`  (OpenAI's coding agent; `happy codex` finds it
+#                  via PATH automatically, same package Happy's own error
+#                  message recommends installing)
+#   happy       -> `happy`  (mobile/web client wrapper: `happy claude` /
+#                  `happy codex`)
 #
 # `happy` bundles prebuilt ripgrep + difftastic archives for EVERY platform
 # it supports (darwin/linux/win32 x x64/arm64 = 12 files, ~106MB) directly
@@ -131,7 +118,7 @@ RUN userdel -r ubuntu 2>/dev/null || true \
 # layer's diff).
 RUN npm install -g \
         @anthropic-ai/claude-code \
-        claudish \
+        @openai/codex \
         happy \
     && npm cache clean --force \
     && case "$(dpkg --print-architecture)" in \
@@ -146,26 +133,24 @@ RUN npm install -g \
         -delete
 
 # Workspace the CLIs operate on. Owned by the non-root user so `claude`,
-# `claudish`, and `happy` can all write their local state/config dirs, and so
+# `codex`, and `happy` can all write their local state/config dirs, and so
 # compiled artifacts land with sane ownership.
 ENV WORKDIR=/workspace
 RUN mkdir -p "${WORKDIR}" \
     && chown -R "${USERNAME}:${USERNAME}" "${WORKDIR}" /home/"${USERNAME}"
 
 COPY --chown=${USERNAME}:${USERNAME} entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY --chown=${USERNAME}:${USERNAME} claude-via-happy.sh /usr/local/bin/claude-via-happy
-COPY --chown=${USERNAME}:${USERNAME} configure-claudish-endpoints.sh /usr/local/bin/configure-claudish-endpoints
+COPY --chown=${USERNAME}:${USERNAME} configure-codex-provider.sh /usr/local/bin/configure-codex-provider
 COPY --chown=${USERNAME}:${USERNAME} configure-happy-credentials.sh /usr/local/bin/configure-happy-credentials
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/claude-via-happy \
-        /usr/local/bin/configure-claudish-endpoints /usr/local/bin/configure-happy-credentials
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/configure-codex-provider \
+        /usr/local/bin/configure-happy-credentials
 
 USER ${USERNAME}
 WORKDIR ${WORKDIR}
 
 # Provide a placeholder key so Claude Code's login dialog doesn't block when
-# routing through Claudish; override with a real ANTHROPIC_API_KEY (direct
-# Anthropic use) or an OPENROUTER_API_KEY/GEMINI_API_KEY/OPENAI_API_KEY (for
-# claudish) at `docker run -e ...` time.
+# routing through another provider; override with a real ANTHROPIC_API_KEY
+# for direct Anthropic use.
 ENV ANTHROPIC_API_KEY=sk-ant-api03-placeholder
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

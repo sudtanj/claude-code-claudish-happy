@@ -14,14 +14,14 @@ services:
     # the Happy app, no separate service needed. Override the command for
     # one-off interactive use instead, e.g.:
     #   docker compose -f docker-compose.hub.yml run --rm agent claude
-    #   docker compose -f docker-compose.hub.yml run --rm agent claudish --model openrouter@deepseek/deepseek-r1
+    #   docker compose -f docker-compose.hub.yml run --rm agent codex
     #   docker compose -f docker-compose.hub.yml run --rm agent happy claude
-    #   docker compose -f docker-compose.hub.yml run --rm agent claudish-happy --model openrouter@deepseek/deepseek-r1
+    #   docker compose -f docker-compose.hub.yml run --rm agent happy codex
     #   docker compose -f docker-compose.hub.yml run --rm agent bash
-    # Want Claudish's any-model routing running in the BACKGROUND instead
-    # of plain Happy/Anthropic? Change this line to (and set the matching
-    # provider key, e.g. OPENROUTER_API_KEY, below):
-    #   command: ["background", "claudish-happy", "--model", "openrouter@deepseek/deepseek-r1"]
+    # Want Codex (BYOK any OpenAI-Responses-API-compatible endpoint)
+    # running in the BACKGROUND instead of plain Claude Code/Anthropic?
+    # Change this line to (and set CODEX_BASE_URL/CODEX_API_KEY below):
+    #   command: ["background", "happy", "codex"]
     command: ["background", "happy", "claude"]
     restart: unless-stopped
     # No stdin_open/tty here on purpose: `docker compose run` already
@@ -36,7 +36,7 @@ services:
       - .:/workspace
       # Persist each CLI's local config/auth across container restarts.
       - claude-config:/home/agent/.claude
-      - claudish-config:/home/agent/.claudish
+      - codex-config:/home/agent/.codex
       - happy-config:/home/agent/.happy
     env_file:
       # Copy .env.example (see the repo, or write your own from the
@@ -47,17 +47,17 @@ services:
     environment:
       # Uncomment/override any of these here instead of (or on top of) .env:
       # ANTHROPIC_API_KEY: sk-ant-...
-      # OPENROUTER_API_KEY: sk-or-v1-...
-      # GEMINI_API_KEY: ...
       # OPENAI_API_KEY: sk-...
-      # OLLAMA_HOST: http://host.docker.internal:11434
-      # CUSTOM_OPENAI_BASE_URL: http://gpu-box:8000/v1
-      # CUSTOM_OPENAI_API_KEY: sk-...
-      # CUSTOM_ANTHROPIC_BASE_URL: https://my-anthropic-gateway.internal
-      # CUSTOM_ANTHROPIC_API_KEY: sk-ant-...
-      # CLAUDISH_PORT: 3000
+      # Codex BYOK: point it at any OpenAI-Responses-API-compatible
+      # endpoint instead of api.openai.com. CODEX_API_KEY is optional (a
+      # local/trusted gateway needs no key at all). Note: Codex CLI only
+      # speaks the newer Responses API (/v1/responses), not the more
+      # common Chat Completions format - your endpoint has to support it.
+      # CODEX_BASE_URL: https://my-gateway.internal/v1
+      # CODEX_API_KEY: sk-...
+      # CODEX_MODEL: gpt-5
       # Happy needs no key to START: if unpaired, the entrypoint runs
-      # pairing itself (QR code/link) before Claude Code/Claudish start,
+      # pairing itself (QR code/link) before Claude Code/Codex start,
       # then prints a HAPPY_CREDENTIALS_B64 value and exits instead of
       # starting a real session nobody can reach - paste that here and
       # restart (see the repo's README.md). Pair once via
@@ -73,5 +73,5 @@ services:
 
 volumes:
   claude-config:
-  claudish-config:
+  codex-config:
   happy-config:
