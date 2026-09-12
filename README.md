@@ -9,10 +9,14 @@ it writes:
 - **[Happy](https://github.com/slopus/happy)** — mobile/web control for Claude Code or Codex sessions (`happy`)
 
 Also includes a full dev toolchain: build-essential/cmake/gdb (C/C++), Python 3
-+ pip/venv, Node.js 22, Deno, Go, git, sqlite3, and the usual CLI utilities
-(jq, ripgrep, tmux, vim, etc.). The `agent` user has passwordless `sudo` for
-ad hoc package installs. (No Rust or Java - see "Image size" below for why
-and how to add them back if you need them.)
++ pip/venv, Node.js 22, Deno, Go, Bun, git, sqlite3, and the usual CLI
+utilities (jq, ripgrep, tmux, vim, etc.). The `agent` user has passwordless
+`sudo` for ad hoc package installs. (No Rust or Java - see "Image size"
+below for why and how to add them back if you need them.)
+
+Bun isn't just an extra language runtime here - **Claudish requires it**.
+Its launcher hard-requires the Bun runtime internally (`bun:ffi`,
+`Bun.spawn`), regardless of Node.js being installed.
 
 ## Quick start with docker compose
 
@@ -119,9 +123,9 @@ pairing **on its own, before Claude Code or Claudish ever start**:
    session, no pairing step.
 
 That means:
-- The container **must have a real terminal attached** for step 3
-  (`docker compose run` / `docker run -it` - already the default here via
-  `stdin_open`/`tty` in `docker-compose.yml`).
+- The container **must have a real terminal attached** for step 3 - use
+  `docker compose run --rm agent ...` (which allocates one automatically
+  when your own terminal is real) or `docker run -it`.
 - If `~/.happy` (mounted here as the `happy-config` volume) already has a
   valid `access.key` - from a previous run, or because you set
   `HAPPY_CREDENTIALS_B64` - steps 2-5 are skipped entirely and your command

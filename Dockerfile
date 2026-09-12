@@ -5,7 +5,9 @@
 #   - Claudish          (https://claudish.com / https://github.com/MadAppGang/claudish)
 #   - Happy CLI         (https://github.com/slopus/happy)
 # plus common compilers/interpreters so Claude Code can actually build and
-# run the code it writes (C/C++, Python, Go, Node, Deno), not just edit it.
+# run the code it writes (C/C++, Python, Go, Node, Deno, Bun), not just
+# edit it. Bun is also a hard runtime requirement for claudish itself, not
+# just an optional language runtime - see the Bun install step below.
 FROM ubuntu:24.04
 
 ARG USERNAME=agent
@@ -14,6 +16,7 @@ ARG USER_GID=1000
 ARG NODE_MAJOR=22
 ARG GO_VERSION=1.23.4
 ARG DENO_VERSION=v2.1.4
+ARG BUN_VERSION=1.4.2
 
 # glibc's built-in C.UTF-8 gives UTF-8 locale support without installing the
 # (surprisingly not-tiny) `locales` package + running locale-gen.
@@ -82,6 +85,22 @@ RUN set -eux; \
     && unzip -q /tmp/deno.zip -d /usr/local/bin \
     && rm /tmp/deno.zip \
     && chmod +x /usr/local/bin/deno
+
+# Bun runtime, installed system-wide from the official release archive.
+# Required by claudish - it uses Bun-specific APIs internally (bun:ffi,
+# Bun.spawn) and its launcher hard-requires Bun even though its own
+# package.json lists Node as a supported engine too.
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in \
+        amd64) BUN_ARCH=linux-x64 ;; \
+        arm64) BUN_ARCH=linux-aarch64 ;; \
+        *) echo "unsupported architecture for bun" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-${BUN_ARCH}.zip" -o /tmp/bun.zip \
+    && unzip -q /tmp/bun.zip -d /tmp/bun-extracted \
+    && mv "/tmp/bun-extracted/bun-${BUN_ARCH}/bun" /usr/local/bin/bun \
+    && rm -rf /tmp/bun.zip /tmp/bun-extracted \
+    && chmod +x /usr/local/bin/bun
 
 # Non-root user the CLIs and any compiled programs run as, with passwordless
 # sudo so build tooling (package installs, etc.) can still be used ad hoc.

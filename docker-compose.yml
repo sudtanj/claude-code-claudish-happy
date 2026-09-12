@@ -13,6 +13,10 @@ services:
     #   docker compose run --rm agent happy claude
     #   docker compose run --rm agent claudish-happy --model openrouter@deepseek/deepseek-r1
     #   docker compose run --rm agent bash
+    # Want Claudish's any-model routing running in the BACKGROUND instead
+    # of plain Happy/Anthropic? Change this line to (and set the matching
+    # provider key, e.g. OPENROUTER_API_KEY, below):
+    #   command: ["background", "claudish-happy", "--model", "openrouter@deepseek/deepseek-r1"]
     command: ["background", "happy", "claude"]
     restart: unless-stopped
     # No stdin_open/tty here on purpose: `docker compose run` already
