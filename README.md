@@ -100,6 +100,35 @@ instead of using the hosted one:
 | `HAPPY_WEBAPP_URL` | `https://app.happy.engineering` | Web app the pairing link opens |
 | `HAPPY_HOME_DIR` | `~/.happy` | Where credentials/settings are stored |
 
+#### Pre-pairing Happy in advance (via docker-compose env)
+
+Happy itself has no env var for its credentials - it only ever reads
+`~/.happy/access.key`, the small JSON file it writes once you approve the
+QR/link pairing. If you'd rather not do that interactive step on every fresh
+container (headless deploys, CI, throwaway containers, or you just don't
+want to keep the `happy-config` volume around), you can bake that file's
+content into `docker-compose.yml`/`.env` instead:
+
+1. Pair once, interactively, however you like (locally, or in this image):
+   ```bash
+   docker compose run --rm agent happy claude
+   # scan the QR / open the link, approve it, then Ctrl-C once you see your prompt
+   ```
+2. Grab that credentials file, base64-encoded (so it survives `.env`/YAML
+   untouched):
+   ```bash
+   docker compose run --rm agent bash -c 'base64 -w0 ~/.happy/access.key'
+   ```
+3. Put the output in `.env` as `HAPPY_CREDENTIALS_B64=<value>` (or under
+   `environment:` in `docker-compose.yml`).
+
+On every future container start, the entrypoint writes that value straight
+into `~/.happy/access.key` **if the file isn't already there** - so it never
+overwrites a real pairing, it just skips the interactive step on a fresh
+volume. Treat `HAPPY_CREDENTIALS_B64` like a credential (it grants control of
+your Happy-linked Claude Code sessions): keep it out of git, the same as any
+API key in `.env`.
+
 ## Build
 
 ```bash

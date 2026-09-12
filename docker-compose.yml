@@ -35,6 +35,9 @@ services:
       # these if self-hosting Happy's own server (see README.md):
       # HAPPY_SERVER_URL: https://your-happy-server.internal
       # HAPPY_WEBAPP_URL: https://your-happy-webapp.internal
+      # To skip that interactive pairing on a fresh container, set this to
+      # the base64 of a previously-paired ~/.happy/access.key (see README.md):
+      # HAPPY_CREDENTIALS_B64: ...
       TERM: xterm-256color
     stdin_open: true
     tty: true

@@ -25,6 +25,10 @@ set -euo pipefail
 # CUSTOM_OPENAI_BASE_URL / CUSTOM_ANTHROPIC_BASE_URL (+ optional
 # *_API_KEY) as Claudish "customEndpoints" named custom-openai /
 # custom-anthropic - see configure-claudish-endpoints.sh and .env.example.
+#
+# For `happy` / `claudish-happy`, it pre-seeds Happy's pairing credentials
+# from HAPPY_CREDENTIALS_B64 if set, skipping the interactive QR-code/link
+# flow on a fresh container - see configure-happy-credentials.sh.
 
 PLACEHOLDER="sk-ant-api03-placeholder"
 
@@ -82,10 +86,12 @@ case "${1:-claude}" in
         # so the model proxy and Happy's remote control both attach to the
         # same session.
         export CLAUDE_PATH=/usr/local/bin/claude-via-happy
+        configure-happy-credentials
         shift
         set -- claudish "$@"
         ;;
     happy)
+        configure-happy-credentials
         case "${2:-}" in
             codex)
                 require_one_of "happy codex" OPENAI_API_KEY
