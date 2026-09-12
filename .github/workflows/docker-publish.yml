@@ -1,138 +1,165 @@
-name: Build and push Docker image
+name: Build and push Docker images
 
-# On every push to a tracked branch: auto-bump a semver git tag (patch by
-# default), build linux/amd64 and linux/arm64 NATIVELY (one runner per
-# arch, no QEMU emulation - this image's full dev toolchain, build-essential,
-# a JDK, Go, Rust, Deno, would make an emulated arm64 build painfully slow),
-# then merge both into one multi-arch manifest and push it to Docker Hub as
-# both ":latest" and ":<the new tag>".
+# Generic per-folder Docker image builder: every top-level folder in this
+# repo that contains a Dockerfile is treated as an independent image. On
+# push to main, only the folder(s) actually touched by that push get
+# built - each gets its OWN auto-bumped version tag (git tags named
+# "<folder>-vX.Y.Z", scoped to that folder, independent of every other
+# folder's tag sequence) and its own Docker Hub repository
+# (docker.io/sudtanj/<folder-name>), pushed as both ":latest" and
+# ":<the new tag>".
+#
+# To add a new image: create a new top-level folder with a Dockerfile in
+# it (see claude-code-claudish-happy/ for a full example, including its
+# own docker-compose.yml/README.md pattern - not required, just a
+# convention). Nothing else needs to change here; the next push that
+# touches that folder builds and publishes it automatically.
 #
 # Required repo secret (Settings -> Secrets and variables -> Actions):
-#   DOCKER_HUB_KEY  - Docker Hub access token (Account Settings -> Security
-#                      -> Personal access tokens; needs Read & Write scope)
-# The Docker Hub username (sudtanj) is hardcoded below since it's not
-# sensitive - the DOCKERHUB_IMAGE env var already names it.
+#   DOCKER_HUB_KEY  - a Docker Hub access token with Read & Write scope
+#                      (Docker Hub -> Account Settings -> Security ->
+#                      Personal access tokens). Used for every image; the
+#                      Docker Hub username (sudtanj) is hardcoded below
+#                      since it isn't sensitive.
 #
 # Also requires the repo's default GITHUB_TOKEN to have write access, so
-# the auto-tag step can push the new tag: Settings -> Actions -> General ->
-# Workflow permissions -> "Read and write permissions".
+# the per-folder tag-push step can push new tags: Settings -> Actions ->
+# General -> Workflow permissions -> "Read and write permissions".
 #
-# Needs GitHub-hosted arm64 runners (the "ubuntu-24.04-arm" label) enabled
-# for this repo/account. Free for public repos; on a private repo it needs
-# a plan that includes them - if that label isn't available, replace the
-# arm64 job's `runs-on` with `ubuntu-latest` + a `docker/setup-qemu-action`
-# step and build both platforms in one job instead (slower, but works
-# anywhere).
+# Multi-arch (linux/amd64 + linux/arm64) via QEMU emulation in a single
+# job per folder - simple and uniform across every folder, at the cost of
+# a slower arm64 build than native arm64 runners would give. Fine for
+# small/medium images; a folder with an unusually heavy build (this
+# repo's claude-code-claudish-happy/ image, for one) will just take
+# longer to build on arm64, not fail.
 on:
   push:
     branches:
       - main
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      folder:
+        description: >-
+          Folder to build (must contain a Dockerfile). Leave empty to
+          build every folder that has one.
+        required: false
 
 env:
-  DOCKERHUB_IMAGE: sudtanj/claude-code-claudish-happy
+  DOCKERHUB_NAMESPACE: sudtanj
 
 permissions:
   contents: write
 
 jobs:
-  # Computed once, up front, so every arch builds and the final manifest all
-  # agree on the same version tag.
-  tag:
+  discover:
     runs-on: ubuntu-latest
     outputs:
-      new_tag: ${{ steps.tag_version.outputs.new_tag }}
+      folders: ${{ steps.detect.outputs.folders }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Auto-bump version tag
-        id: tag_version
-        uses: anothrNick/github-tag-action@1.75.0
+      - name: Detect which folder(s) to build
+        id: detect
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WITH_V: true
-          DEFAULT_BUMP: patch
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_FOLDER: ${{ inputs.folder }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          all_folders_with_dockerfile() {
+              find . -mindepth 2 -maxdepth 2 -type f -name Dockerfile \
+                  -printf '%h\n' | sed 's#^\./##' | sort -u
+          }
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$INPUT_FOLDER" ]; then
+              if [ ! -f "${INPUT_FOLDER}/Dockerfile" ]; then
+                  echo "::error::'${INPUT_FOLDER}/Dockerfile' does not exist" >&2
+                  exit 1
+              fi
+              folders="$INPUT_FOLDER"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              folders="$(all_folders_with_dockerfile)"
+          elif [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ] || [ -z "$BEFORE_SHA" ]; then
+              # New branch / first push this workflow has seen - nothing to
+              # diff against, so build everything rather than nothing.
+              folders="$(all_folders_with_dockerfile)"
+          else
+              changed_top_level_dirs="$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" | cut -d/ -f1 | sort -u)"
+              folders=""
+              while IFS= read -r dir; do
+                  [ -f "${dir}/Dockerfile" ] && folders="${folders}${dir}"$'\n'
+              done <<< "$changed_top_level_dirs"
+              folders="$(echo "$folders" | sed '/^$/d' | sort -u)"
+          fi
+
+          json=$(printf '%s\n' "$folders" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "folders=${json}" >> "$GITHUB_OUTPUT"
+          echo "Folders to build: ${json}"
 
   build:
-    needs: tag
+    needs: discover
+    if: needs.discover.outputs.folders != '[]'
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-latest
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
+        folder: ${{ fromJson(needs.discover.outputs.folders) }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Auto-bump this folder's version tag
+        id: tag
+        env:
+          FOLDER: ${{ matrix.folder }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          latest=$(git tag --list "${FOLDER}-v*" | sort -V | tail -1)
+          if [ -z "$latest" ]; then
+              new_version="v0.1.0"
+          else
+              ver="${latest#${FOLDER}-v}"
+              IFS='.' read -r major minor patch <<< "$ver"
+              new_version="v${major}.${minor}.$((patch + 1))"
+          fi
+          new_tag="${FOLDER}-${new_version}"
+
+          git tag "$new_tag"
+          git push origin "$new_tag"
+
+          echo "new_version=${new_version}" >> "$GITHUB_OUTPUT"
+          echo "Tagged ${FOLDER} as ${new_tag}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
+      - name: Set up QEMU (for arm64 emulation)
+        uses: docker/setup-qemu-action@v4
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
-          username: sudtanj
+          username: ${{ env.DOCKERHUB_NAMESPACE }}
           password: ${{ secrets.DOCKER_HUB_KEY }}
 
-      # Pushed by digest only, untagged - the merge job below assembles the
-      # actual :latest / :<version> manifest list from these digests.
-      - name: Build and push (by digest)
-        id: build
+      - name: Build and push
         uses: docker/build-push-action@v7
         with:
-          context: .
-          platforms: linux/${{ matrix.arch }}
-          outputs: type=image,name=${{ env.DOCKERHUB_IMAGE }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
-
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v7
-        with:
-          name: digests-${{ matrix.arch }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  merge:
-    needs: [tag, build]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v8
-        with:
-          path: /tmp/digests
-          pattern: digests-*
-          merge-multiple: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v4
-        with:
-          username: sudtanj
-          password: ${{ secrets.DOCKER_HUB_KEY }}
-
-      - name: Create and push multi-arch manifest
-        working-directory: /tmp/digests
-        run: |
-          docker buildx imagetools create \
-            -t "${DOCKERHUB_IMAGE}:latest" \
-            -t "${DOCKERHUB_IMAGE}:${{ needs.tag.outputs.new_tag }}" \
-            $(printf "${DOCKERHUB_IMAGE}@sha256:%s " *)
-
-      - name: Verify pushed manifest
-        run: docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:${{ needs.tag.outputs.new_tag }}"
+          context: ./${{ matrix.folder }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.folder }}:latest
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.folder }}:${{ steps.tag.outputs.new_version }}
+          cache-from: type=gha,scope=${{ matrix.folder }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.folder }}
