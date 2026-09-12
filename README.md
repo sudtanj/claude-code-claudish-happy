@@ -16,15 +16,36 @@ and how to add them back if you need them.)
 
 ## Quick start with docker compose
 
+Two compose files, depending on whether you want to build from this repo's
+source or just run the already-published image:
+
+- **`docker-compose.yml`** - builds the image locally from the `Dockerfile`
+  in this repo. Use this if you're modifying the image itself.
+- **`docker-compose.hub.yml`** - pulls
+  [`sudtanj/claude-code-claudish-happy`](https://hub.docker.com/r/sudtanj/claude-code-claudish-happy)
+  from Docker Hub instead of building. Use this if you just want to run the
+  CLIs - only this file and a `.env` are needed, no clone/build required.
+
 ```bash
 cp .env.example .env
 # edit .env and fill in the keys for whichever CLI you plan to run
+
+# Build locally:
 docker compose run --rm agent claude
-docker compose run --rm agent claudish --model openrouter@deepseek/deepseek-r1
-docker compose run --rm agent happy claude
-docker compose run --rm agent claudish-happy --model openrouter@deepseek/deepseek-r1
-docker compose run --rm agent bash
+
+# Or pull the published image instead - same commands, just add -f:
+docker compose -f docker-compose.hub.yml run --rm agent claude
+docker compose -f docker-compose.hub.yml run --rm agent claudish --model openrouter@deepseek/deepseek-r1
+docker compose -f docker-compose.hub.yml run --rm agent happy claude
+docker compose -f docker-compose.hub.yml run --rm agent claudish-happy --model openrouter@deepseek/deepseek-r1
+docker compose -f docker-compose.hub.yml run --rm agent bash
 ```
+
+`docker-compose.hub.yml` pulls `:latest` and sets `pull_policy: always`, so
+each run fetches whatever the CI workflow most recently published. Pin an
+exact version instead (see the [tags on Docker
+Hub](https://hub.docker.com/r/sudtanj/claude-code-claudish-happy/tags)) if
+you want reproducible pulls that don't change under you.
 
 The entrypoint checks that the environment variables your chosen command
 needs are actually set (from `.env`, `environment:` in `docker-compose.yml`,

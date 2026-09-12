@@ -1,0 +1,57 @@
+services:
+  agent:
+    # Pulls the published image from Docker Hub instead of building
+    # locally - use this if you just want to run the CLIs and don't need
+    # this repo's source at all. Pin an exact version instead of :latest
+    # if you want reproducible pulls (see the auto-bumped tags at
+    # https://hub.docker.com/r/sudtanj/claude-code-claudish-happy/tags).
+    image: sudtanj/claude-code-claudish-happy:latest
+    pull_policy: always
+    # Default command is `claude`; override per `docker compose run` invocation, e.g.:
+    #   docker compose -f docker-compose.hub.yml run --rm agent claudish --model openrouter@deepseek/deepseek-r1
+    #   docker compose -f docker-compose.hub.yml run --rm agent happy claude
+    #   docker compose -f docker-compose.hub.yml run --rm agent claudish-happy --model openrouter@deepseek/deepseek-r1
+    #   docker compose -f docker-compose.hub.yml run --rm agent bash
+    command: ["claude"]
+    volumes:
+      # Mounts the current directory (wherever you run `docker compose`
+      # from) as the workspace - point this at your actual project.
+      - .:/workspace
+      # Persist each CLI's local config/auth across container restarts.
+      - claude-config:/home/agent/.claude
+      - claudish-config:/home/agent/.claudish
+      - happy-config:/home/agent/.happy
+    env_file:
+      # Copy .env.example to .env (see the repo, or write your own from
+      # the README's env var tables) and fill in the keys the CLI you're
+      # running actually needs - the entrypoint checks for them and will
+      # fail fast with a clear message if a required one is missing.
+      - .env
+    environment:
+      # Uncomment/override any of these here instead of (or on top of) .env:
+      # ANTHROPIC_API_KEY: sk-ant-...
+      # OPENROUTER_API_KEY: sk-or-v1-...
+      # GEMINI_API_KEY: ...
+      # OPENAI_API_KEY: sk-...
+      # OLLAMA_HOST: http://host.docker.internal:11434
+      # CUSTOM_OPENAI_BASE_URL: http://gpu-box:8000/v1
+      # CUSTOM_OPENAI_API_KEY: sk-...
+      # CUSTOM_ANTHROPIC_BASE_URL: https://my-anthropic-gateway.internal
+      # CUSTOM_ANTHROPIC_API_KEY: sk-ant-...
+      # CLAUDISH_PORT: 3000
+      # Happy needs no key to START: if unpaired, the entrypoint runs
+      # pairing itself (QR code/link) before Claude Code/Claudish start,
+      # then prints a HAPPY_CREDENTIALS_B64 value and exits - paste that
+      # here and re-run (see the repo's README.md):
+      # HAPPY_CREDENTIALS_B64: ...
+      # Only set these if self-hosting Happy's own server:
+      # HAPPY_SERVER_URL: https://your-happy-server.internal
+      # HAPPY_WEBAPP_URL: https://your-happy-webapp.internal
+      TERM: xterm-256color
+    stdin_open: true
+    tty: true
+
+volumes:
+  claude-config:
+  claudish-config:
+  happy-config:
