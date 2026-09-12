@@ -27,8 +27,11 @@ set -euo pipefail
 # custom-anthropic - see configure-claudish-endpoints.sh and .env.example.
 #
 # For `happy` / `claudish-happy`, it pre-seeds Happy's pairing credentials
-# from HAPPY_CREDENTIALS_B64 if set, skipping the interactive QR-code/link
-# flow on a fresh container - see configure-happy-credentials.sh.
+# from HAPPY_CREDENTIALS_B64 if set (see configure-happy-credentials.sh),
+# then - if there's still no valid Happy credential - runs `happy auth
+# login` (Happy's own pairing-only subcommand) BEFORE touching Claude Code
+# or Claudish at all, so a fresh/unpaired container never launches a real
+# session it can't actually hand off to Happy.
 
 PLACEHOLDER="sk-ant-api03-placeholder"
 
@@ -64,6 +67,46 @@ Set ANTHROPIC_API_KEY in your docker-compose.yml 'environment:' block. See .env.
     fi
 }
 
+# If there's no valid Happy credential yet (after trying to seed one from
+# HAPPY_CREDENTIALS_B64), pair NOW via `happy auth login` - Happy's own
+# pairing-only subcommand, which never touches Claude Code or Codex - then
+# print the resulting credential and STOP, instead of continuing into a
+# Claude Code / Claudish session this same run. That keeps a fresh/unpaired
+# container from launching a real (and, without Happy attached, pointless)
+# session, and gives the user a copy-pasteable value for next time.
+ensure_happy_authenticated() {
+    configure-happy-credentials
+
+    local happy_home="${HAPPY_HOME_DIR:-$HOME/.happy}"
+    local credentials_file="${happy_home}/access.key"
+    [ -f "$credentials_file" ] && return 0
+
+    echo "" >&2
+    echo "[entrypoint] No Happy credentials found - pairing now (Claude Code/Claudish will NOT start this run)." >&2
+    echo "[entrypoint] Scan the QR code / open the link below, then approve the session." >&2
+    echo "" >&2
+
+    if ! happy auth login || [ ! -f "$credentials_file" ]; then
+        die "Happy authentication failed or was cancelled - nothing was started. Re-run to try again."
+    fi
+
+    local token_b64
+    token_b64=$(base64 -w0 "$credentials_file")
+
+    echo "" >&2
+    echo "======================================================================" >&2
+    echo " Happy pairing complete. Copy the line below into your .env, then" >&2
+    echo " re-run this same command - it will skip pairing and go straight" >&2
+    echo " into your session from now on:" >&2
+    echo "======================================================================" >&2
+    echo "" >&2
+    echo "HAPPY_CREDENTIALS_B64=${token_b64}" >&2
+    echo "" >&2
+    echo "======================================================================" >&2
+    echo "" >&2
+    exit 0
+}
+
 case "${1:-claude}" in
     claude)
         require_anthropic_key
@@ -75,6 +118,7 @@ case "${1:-claude}" in
         ;;
     claudish-happy)
         configure-claudish-endpoints
+        ensure_happy_authenticated
         require_one_of "claudish-happy" OPENROUTER_API_KEY GEMINI_API_KEY OPENAI_API_KEY OLLAMA_HOST \
             CUSTOM_OPENAI_BASE_URL CUSTOM_ANTHROPIC_BASE_URL
         # claudish resolves the "claude" binary it launches via $CLAUDE_PATH
@@ -86,12 +130,11 @@ case "${1:-claude}" in
         # so the model proxy and Happy's remote control both attach to the
         # same session.
         export CLAUDE_PATH=/usr/local/bin/claude-via-happy
-        configure-happy-credentials
         shift
         set -- claudish "$@"
         ;;
     happy)
-        configure-happy-credentials
+        ensure_happy_authenticated
         case "${2:-}" in
             codex)
                 require_one_of "happy codex" OPENAI_API_KEY
