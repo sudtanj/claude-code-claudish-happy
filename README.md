@@ -109,11 +109,19 @@ container (headless deploys, CI, throwaway containers, or you just don't
 want to keep the `happy-config` volume around), you can bake that file's
 content into `docker-compose.yml`/`.env` instead:
 
-1. Pair once, interactively, however you like (locally, or in this image):
+1. Pair once, interactively (needs `ANTHROPIC_API_KEY` set in `.env`, and a
+   real terminal - `docker compose run`, not `-d`):
    ```bash
    docker compose run --rm agent happy claude
-   # scan the QR / open the link, approve it, then Ctrl-C once you see your prompt
    ```
+   Happy first asks you to pick **mobile** or **web** auth (arrow keys +
+   Enter). Mobile prints a QR code to scan with the [Happy mobile
+   app](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505);
+   web prints a URL to open in a browser (works headless too - the URL is
+   printed either way, so you can copy-paste it even if a browser can't
+   open from inside the container). Approve the session there, and the CLI
+   drops you straight into a normal Claude Code prompt. Ctrl-C or `exit`
+   once you see that prompt - the pairing is already saved.
 2. Grab that credentials file, base64-encoded (so it survives `.env`/YAML
    untouched):
    ```bash
