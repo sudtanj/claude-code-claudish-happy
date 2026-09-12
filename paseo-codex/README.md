@@ -67,6 +67,7 @@ environment variables so you can customize it entirely from your own
 | `CODEX_BASE_URL` | Codex BYOK: point Codex at your own OpenAI-Responses-API-compatible endpoint instead of `api.openai.com`. |
 | `CODEX_API_KEY` | Optional key for the BYOK endpoint (a local/trusted gateway needs none). |
 | `CODEX_MODEL` | Optional default model for Codex. |
+| `GH_TOKEN` | GitHub token for cloning/pulling private repos into `/workspace` - wired up for both `gh` and plain `git` automatically. |
 
 ### Codex BYOK caveat
 
@@ -76,12 +77,22 @@ the more common Chat Completions format that most third-party
 to actually support the Responses API, or requests will fail even though
 Codex itself starts fine.
 
+### Cloning private repos
+
+Set `GH_TOKEN` (a GitHub personal access token with `repo`/`contents:read`
+scope) and both `gh` subcommands and plain `git clone`/`git pull` of
+private repos work out of the box inside `/workspace` - no SSH keys or
+manual `gh auth login` needed.
+
 ## How it's built
 
 `Dockerfile` starts `FROM ghcr.io/getpaseo/paseo:latest`, installs
-`@openai/codex` as root, and wraps Paseo's own entrypoint with a thin
-`entrypoint.sh` that runs `configure-codex-provider.sh` (generates
-`~/.codex/config.toml` from the env vars above) before handing off,
-unchanged, to Paseo's original entrypoint - same `tini` PID-1 wrapping,
-same root -> `paseo`-user privilege drop via `gosu`, same daemon-start vs.
-exec-passthrough branching.
+`@openai/codex` and GitHub CLI (`gh`, from GitHub's own apt repo - the base
+image is Debian bookworm-slim) as root, and wraps Paseo's own entrypoint
+with a thin `entrypoint.sh` that runs `configure-codex-provider.sh`
+(generates `~/.codex/config.toml` from the env vars above) and, if
+`GH_TOKEN`/`GITHUB_TOKEN` is set, `gh auth setup-git` (wires the token into
+git's credential helper) before handing off, unchanged, to Paseo's original
+entrypoint - same `tini` PID-1 wrapping, same root -> `paseo`-user
+privilege drop via `gosu`, same daemon-start vs. exec-passthrough
+branching.

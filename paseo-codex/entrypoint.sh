@@ -38,4 +38,17 @@ if [ "$(id -u)" = "0" ]; then
     chown -R paseo:paseo "$CODEX_HOME" 2>/dev/null || true
 fi
 
+# gh CLI: if GH_TOKEN (or GITHUB_TOKEN) is set, wire it up as a git
+# credential helper so plain `git clone`/`git pull` of private repos in
+# /workspace work too, not just `gh` subcommands (which already pick up
+# the token from the env on every invocation with no setup needed).
+# `gh auth setup-git` just writes gitconfig - the token itself stays in
+# the env and is re-read by the helper on every git operation, so this
+# only needs to run once per container start, before dropping to `paseo`
+# (same gosu Paseo's own entrypoint uses to run everything else as that
+# user - see docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint).
+if [ "${GH_TOKEN:-${GITHUB_TOKEN:-}}" != "" ] && [ "$(id -u)" = "0" ]; then
+    gosu paseo gh auth setup-git 2>/dev/null || true
+fi
+
 exec /usr/bin/tini -- /usr/local/bin/paseo-docker-entrypoint "$@"

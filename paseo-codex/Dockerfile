@@ -19,6 +19,20 @@ USER root
 
 RUN npm install -g @openai/codex
 
+# GitHub CLI (gh) - so Codex sessions (running as `paseo`, working in
+# /workspace) can clone private repos via `gh repo clone` / `gh auth login`
+# using GH_TOKEN, rather than needing SSH keys mounted into the container.
+# Base image is Debian bookworm-slim (node:22-bookworm-slim) - install from
+# GitHub's own apt repo per https://github.com/cli/cli/blob/trunk/docs/install_linux.md.
+RUN (type -p wget >/dev/null || (apt-get update && apt-get install -y wget)) \
+    && mkdir -p -m 755 /etc/apt/keyrings \
+    && wget -nv -O /etc/apt/keyrings/githubcli-archive-keyring.gpg https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update \
+    && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY configure-codex-provider.sh /usr/local/bin/configure-codex-provider
 COPY entrypoint.sh /usr/local/bin/paseo-codex-entrypoint
 RUN chmod +x /usr/local/bin/configure-codex-provider /usr/local/bin/paseo-codex-entrypoint

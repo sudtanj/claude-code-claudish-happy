@@ -24,6 +24,7 @@ services:
       # CODEX_BASE_URL: https://my-gateway.internal/v1
       # CODEX_API_KEY: sk-...
       # CODEX_MODEL: gpt-5
+      # GH_TOKEN: ghp_...
       TERM: xterm-256color
 
 volumes:
