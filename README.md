@@ -9,9 +9,10 @@ it writes:
 - **[Happy](https://github.com/slopus/happy)** — mobile/web control for Claude Code or Codex sessions (`happy`)
 
 Also includes a full dev toolchain: build-essential/cmake/gdb (C/C++), Python 3
-+ pip/venv, Node.js 22, Deno, Go, Rust (via rustup), a JDK, git, sqlite3, and
-the usual CLI utilities (jq, ripgrep, tmux, vim, etc.). The `agent` user has
-passwordless `sudo` for ad hoc package installs.
++ pip/venv, Node.js 22, Deno, Go, git, sqlite3, and the usual CLI utilities
+(jq, ripgrep, tmux, vim, etc.). The `agent` user has passwordless `sudo` for
+ad hoc package installs. (No Rust or Java - see "Image size" below for why
+and how to add them back if you need them.)
 
 ## Quick start with docker compose
 
@@ -192,36 +193,52 @@ docker run -it --rm -v "$PWD":/workspace claude-code-claudish-happy bash
 
 ## Image size
 
-This is a genuinely large image (~2.5GB) because it bundles multiple full
-compiler toolchains plus Claude Code's native binary. The two biggest
-contributors, in order:
+Originally ~2.5GB with a full toolchain (C/C++, Python, Go, Rust, Deno,
+Node, a JDK). Rust and Java have since been dropped (this image only keeps
+Go, Deno, and Python as language runtimes, alongside the C/C++ toolchain
+that `npm install`'s native addons and Python's C extensions rely on),
+saving roughly **~877MB**:
 
-1. **Claude Code's native binary is installed twice** (~220MB each, ~440MB
+- **Rust** (rustc + cargo + rust-std, rustup's minimal profile): measured by
+  downloading the actual release components - **~577MB**.
+- **Java** (`default-jdk-headless` + its full dependency closure -
+  `openjdk-*-jre-headless`, `openjdk-*-jdk-headless`, etc.): computed from
+  the real apt dependency closure - **~300MB**.
+
+That puts the image in the **~1.6-1.7GB** range. What's left, roughly:
+
+1. **Claude Code's native binary, installed twice** (~220MB each, ~440MB
    total) - once directly (`@anthropic-ai/claude-code`, used by `claude`/
    `claudish`), and once again bundled inside Happy's own copy
    (`@anthropic-ai/claude-agent-sdk`, which Happy launches instead of the
    global `claude`). This is architecturally how Happy works and isn't
    something the Dockerfile can dedupe.
-2. **The language toolchains**: Rust (~700MB, even with rustup's minimal
-   profile), Go (~350MB), a JDK (~200-300MB, `default-jdk-headless`), Deno
-   (~120MB), and Node.js (~180MB).
+2. **Go** (~350MB) and **Deno** (~120MB), the two remaining language
+   runtimes, plus **Node.js** (~180MB, required to run the npm-based CLIs
+   themselves - not optional).
+3. The base OS + C/C++ toolchain (build-essential, cmake, gdb, etc.) and
+   everyday CLI utilities.
 
-Already trimmed, at no functionality cost: `default-jdk` -> `default-jdk-headless`
-(drops X11/AWT-only dependencies Java doesn't need headless), `locales`
-package dropped in favor of glibc's built-in `C.UTF-8`, and ~86MB of dead
-weight removed from Happy's own package - it bundles prebuilt ripgrep +
-difftastic binaries for all 6 platform combinations it supports
-(darwin/linux/win32 x x64/arm64) directly in its files rather than as npm
-optionalDependencies, so a plain `npm install` pulls all 12 archives
-regardless of host platform; the Dockerfile deletes the 10 this Linux
-container can never use, in the same build layer they're installed in (so
-they don't just become invisible - they're actually gone from the image).
+Already-applied, no-functionality-cost trims: `locales` package dropped in
+favor of glibc's built-in `C.UTF-8`, and ~86MB of dead weight removed from
+Happy's own package - it bundles prebuilt ripgrep + difftastic binaries for
+all 6 platform combinations it supports (darwin/linux/win32 x x64/arm64)
+directly in its files rather than as npm optionalDependencies, so a plain
+`npm install` pulls all 12 archives regardless of host platform; the
+Dockerfile deletes the 10 this Linux container can never use, in the same
+build layer they're installed in (so they don't just become invisible -
+they're actually gone from the image).
 
-The much bigger lever is **not installing a toolchain you don't use**. If
-you only write, say, Python and Node, drop the Go/Rust/Deno/JDK blocks from
-the Dockerfile entirely - each is a self-contained `RUN` block, easy to
-remove. Ask if you'd like help trimming it down to just what you actually
-need.
+Investigated and ruled out: switching the base image (`ubuntu:24.04` is
+already ~28MB compressed, essentially identical to `debian:bookworm-slim`'s
+~27MB - not a meaningful lever either way) and multi-stage builds (their
+whole value is discarding a build-only toolchain from the final image; this
+image *is* the toolchain - Go/Deno/Python have to stay in the final image
+for Claude Code to use them at runtime, so there's nothing to discard).
+
+Need Go, Deno, or the C/C++ toolchain back out too? Each remaining
+toolchain is still a self-contained block in the Dockerfile - ask if you'd
+like help trimming further.
 
 ## CI/CD: auto-publish to Docker Hub
 

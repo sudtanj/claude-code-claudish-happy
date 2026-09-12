@@ -5,8 +5,7 @@
 #   - Claudish          (https://claudish.com / https://github.com/MadAppGang/claudish)
 #   - Happy CLI         (https://github.com/slopus/happy)
 # plus common compilers/interpreters so Claude Code can actually build and
-# run the code it writes (C/C++, Python, Go, Rust, Node, Deno), not just
-# edit it.
+# run the code it writes (C/C++, Python, Go, Node, Deno), not just edit it.
 FROM ubuntu:24.04
 
 ARG USERNAME=agent
@@ -25,9 +24,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Base OS tooling + full build/dev toolchain:
 #   - build-essential, cmake, pkg-config, gdb    -> compile & debug C/C++
 #   - python3/pip/venv                           -> run & build Python
-#   - default-jdk-headless                       -> compile & run Java (no
-#     AWT/Swing/X11 - fine for a headless container, and meaningfully
-#     smaller than default-jdk)
 #   - git, curl, wget, unzip, jq, ripgrep, ...    -> everyday CLI/dev tooling
 RUN apt-get update && apt-get install -y --no-install-recommends \
         apt-transport-https \
@@ -37,7 +33,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         cmake \
         curl \
-        default-jdk-headless \
         gdb \
         git \
         gnupg \
@@ -101,15 +96,6 @@ RUN userdel -r ubuntu 2>/dev/null || true \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}" \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/"${USERNAME}" \
     && chmod 0440 /etc/sudoers.d/"${USERNAME}"
-
-# Rust toolchain, installed as the non-root user (rustup's expected mode).
-USER ${USERNAME}
-ENV RUSTUP_HOME=/home/${USERNAME}/.rustup \
-    CARGO_HOME=/home/${USERNAME}/.cargo \
-    PATH="/home/${USERNAME}/.cargo/bin:${PATH}"
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
-
-USER root
 
 # Global npm packages:
 #   claude-code -> `claude`
