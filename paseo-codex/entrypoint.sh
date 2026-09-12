@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Thin wrapper around Paseo's own entrypoint (docker/base/rootfs/usr/local/
+# bin/paseo-docker-entrypoint in https://github.com/getpaseo/paseo, run via
+# tini as PID 1 - see its Dockerfile). Runs Codex BYOK config generation
+# FIRST, then hands off to Paseo's original entrypoint completely
+# unchanged (same tini wrapping, same root -> gosu-to-paseo privilege
+# drop, same "exec the passed command" vs. "start the daemon" branching),
+# via `exec` so the wrapper's own process gets replaced rather than
+# lingering as an extra layer.
+#
+# This has to run before EITHER of Paseo's own two modes: starting the
+# daemon (which will launch Codex sessions on demand) or a direct
+# `docker exec --user paseo <container> codex` (per Paseo's docs) - both
+# need ~/.codex/config.toml already correct.
+
+# Match Paseo's own entrypoint defaults (CODEX_HOME is already set in the
+# base image's ENV, but default it the same way here too in case this
+# entrypoint is ever invoked outside that image, e.g. local testing).
+: "${HOME:=/home/paseo}"
+: "${CODEX_HOME:=${HOME}/.codex}"
+export HOME CODEX_HOME
+
+/usr/local/bin/configure-codex-provider
+
+# configure-codex-provider runs as whatever user this script is currently
+# running as - which is root here, since Paseo's own base image never
+# sets USER (it stays root at the Dockerfile level and drops privileges
+# per-invocation via gosu instead, see docker/base/rootfs). A root-owned
+# config.toml would then be unwritable by the actual `paseo` user (uid
+# 1000) that the daemon and launched agents run as - the same class of
+# bug the claude-code-claudish-happy image hit with its config volumes.
+# Fix it the same way Paseo's own entrypoint fixes freshly-created
+# directories: chown back to paseo:paseo, only when actually running as
+# root (a `docker run --user paseo ...` override needs no fixing at all).
+if [ "$(id -u)" = "0" ]; then
+    chown -R paseo:paseo "$CODEX_HOME" 2>/dev/null || true
+fi
+
+exec /usr/bin/tini -- /usr/local/bin/paseo-docker-entrypoint "$@"

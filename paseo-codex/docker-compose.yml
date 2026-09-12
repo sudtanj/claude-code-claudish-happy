@@ -1,0 +1,30 @@
+services:
+  paseo-codex:
+    build: .
+    image: paseo-codex
+    restart: unless-stopped
+    ports:
+      - "6767:6767"
+    volumes:
+      # Persistent daemon state and agent credentials/config (~/.codex,
+      # Paseo's own ~/.paseo state, etc).
+      - paseo-home:/home/paseo
+      # Code visible to Paseo and the Codex sessions it launches.
+      - .:/workspace
+    env_file:
+      # Copy .env.example to .env and fill in at least PASEO_PASSWORD and
+      # either OPENAI_API_KEY or CODEX_BASE_URL (BYOK).
+      - .env
+    environment:
+      # Uncomment/override any of these here instead of (or on top of) .env:
+      # PASEO_PASSWORD: change-me
+      # PASEO_LISTEN: 0.0.0.0:6767
+      # PASEO_HOSTNAMES: paseo.example.com,.lan
+      # OPENAI_API_KEY: sk-...
+      # CODEX_BASE_URL: https://my-gateway.internal/v1
+      # CODEX_API_KEY: sk-...
+      # CODEX_MODEL: gpt-5
+      TERM: xterm-256color
+
+volumes:
+  paseo-home:

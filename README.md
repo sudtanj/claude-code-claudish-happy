@@ -71,3 +71,4 @@ gh workflow run docker-publish.yml -f folder=claude-code-claudish-happy
 | Folder | Docker Hub | What it is |
 |---|---|---|
 | [`claude-code-claudish-happy/`](claude-code-claudish-happy/) | [`sudtanj/claude-code-claudish-happy`](https://hub.docker.com/r/sudtanj/claude-code-claudish-happy) | Claude Code + Codex CLI + Happy (mobile/web control), full dev toolchain - see its own [README](claude-code-claudish-happy/README.md) |
+| [`paseo-codex/`](paseo-codex/) | [`sudtanj/paseo-codex`](https://hub.docker.com/r/sudtanj/paseo-codex) | [Paseo](https://github.com/getpaseo/paseo) (remote daemon + web UI) + Codex CLI, BYOK via env vars - see its own [README](paseo-codex/README.md) |
