@@ -31,6 +31,10 @@ services:
       # CUSTOM_ANTHROPIC_BASE_URL: https://my-anthropic-gateway.internal
       # CUSTOM_ANTHROPIC_API_KEY: sk-ant-...
       # CLAUDISH_PORT: 3000
+      # Happy pairs via a QR code/link on first run - no key needed. Only set
+      # these if self-hosting Happy's own server (see README.md):
+      # HAPPY_SERVER_URL: https://your-happy-server.internal
+      # HAPPY_WEBAPP_URL: https://your-happy-webapp.internal
       TERM: xterm-256color
     stdin_open: true
     tty: true

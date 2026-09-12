@@ -63,6 +63,43 @@ docker compose run --rm agent claudish --model custom-openai@<model-name>
 docker compose run --rm agent claudish --model custom-anthropic@<model-name>
 ```
 
+### Connecting to Happy (pairing your phone/browser)
+
+Happy needs **no API key at all** - it authenticates by pairing a locally
+generated keypair to your account, not by an env var. The first time you run
+`happy claude` (or `claudish-happy`, or `happy codex`) with no saved Happy
+credentials yet, it:
+
+1. Generates a keypair and registers it with the Happy server.
+2. Prints a QR code **and** a plain URL/link (`happy://terminal?...` for the
+   mobile app, or a web link) to the terminal.
+3. Blocks, polling the server, until you scan the QR / open the link and
+   approve the session from the [Happy app](https://app.happy.engineering) or
+   mobile app.
+4. Saves the resulting credentials under `~/.happy` and proceeds straight
+   into your Claude Code / Codex session - no re-pairing on later runs.
+
+That means:
+- The container **must have a real terminal attached** to see the QR code
+  the first time (`docker compose run` / `docker run -it` - already the
+  default here via `stdin_open`/`tty` in `docker-compose.yml`). It won't
+  work non-interactively (`-d`/detached) until pairing has happened once.
+- `~/.happy` (mounted here as the `happy-config` volume) must persist across
+  runs, or you'll be asked to re-pair every time the container restarts.
+- **No env var is required** for a normal setup using Anthropic's hosted
+  Happy server (`api.cluster-fluster.com`) and web app
+  (`app.happy.engineering`) - those are just Happy's defaults.
+
+Only set these if you're self-hosting Happy's own server
+([`happy-server`](https://github.com/slopus/happy/tree/main/packages/happy-server))
+instead of using the hosted one:
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `HAPPY_SERVER_URL` | `https://api.cluster-fluster.com` | Happy's sync/auth server |
+| `HAPPY_WEBAPP_URL` | `https://app.happy.engineering` | Web app the pairing link opens |
+| `HAPPY_HOME_DIR` | `~/.happy` | Where credentials/settings are stored |
+
 ## Build
 
 ```bash
