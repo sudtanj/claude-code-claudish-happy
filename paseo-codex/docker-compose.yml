@@ -15,6 +15,20 @@ services:
     # compatible with `network_mode: host` and is dropped in favor of it;
     # the daemon binds directly to the host's PASEO_LISTEN port instead.
     network_mode: host
+    # If your host has working IPv6 but a broken/unavailable IPv4 path (a
+    # dead default route, ISP that only actually passes v6, etc): GitHub's
+    # own hosts (github.com, api.github.com) don't publish AAAA records, so
+    # normal dual-stack does nothing for them - `gh`/git/Codex just dial
+    # the IPv4 address directly and hang on your broken route. Point DNS at
+    # Cloudflare's public DNS64 resolvers instead: they synthesize an IPv6
+    # address for IPv4-only hosts and transparently NAT64 the traffic back
+    # to the real IPv4 destination over Cloudflare's own network, so the
+    # whole path from your container out stays IPv6. Uncomment if you hit
+    # this (harmless to leave commented on a normal dual-stack/IPv4 host -
+    # this is specifically an IPv6-only-egress workaround):
+    # dns:
+    #   - 2606:4700:4700::64
+    #   - 2606:4700:4700::6400
     volumes:
       # Persistent daemon state and agent credentials/config (~/.codex,
       # Paseo's own ~/.paseo state, etc).

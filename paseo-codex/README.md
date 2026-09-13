@@ -89,6 +89,29 @@ the more common Chat Completions format that most third-party
 to actually support the Responses API, or requests will fail even though
 Codex itself starts fine.
 
+### IPv4-broken / IPv6-only hosts: reaching GitHub via NAT64
+
+GitHub's own hosts (`github.com`, `api.github.com`) don't publish AAAA
+records - they're IPv4-only. If your host has working IPv6 but a
+broken/unavailable IPv4 path (a dead default route, or an ISP/VPS that only
+actually passes v6 despite handing out an IPv4 address), `gh`, git, and
+Codex will dial GitHub's real IPv4 address directly and hang until it times
+out - `network_mode: host` alone doesn't fix this, since the container is
+then just as IPv4-broken as the host it shares a network stack with.
+
+The fix is DNS64 + NAT64: point DNS at a resolver that synthesizes an IPv6
+address for IPv4-only hosts, backed by a NAT64 gateway that translates the
+traffic back to the real IPv4 destination. Cloudflare runs a public one -
+uncomment the `dns:` block in `docker-compose.yml`/`.hub.yml`:
+
+```yaml
+dns:
+  - 2606:4700:4700::64
+  - 2606:4700:4700::6400
+```
+
+Leave it commented on a normal dual-stack or IPv4-only host - it's specifically for this IPv6-only-egress case.
+
 ### Cloning private repos
 
 Set `GH_TOKEN` (a GitHub personal access token with `repo`/`contents:read`
