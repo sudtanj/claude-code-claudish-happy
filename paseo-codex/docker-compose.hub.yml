@@ -7,8 +7,18 @@ services:
     image: sudtanj/paseo-codex:latest
     pull_policy: always
     restart: unless-stopped
-    ports:
-      - "6767:6767"
+    # Host networking instead of a published port: the container shares the
+    # host's network namespace directly (interfaces, routes, DNS) rather
+    # than going through Docker's NATed bridge network. Needed if your host
+    # is IPv6-only/IPv6-preferred - Docker's default bridge only NATs
+    # IPv4 unless you separately configure IPv6 on the Docker daemon and
+    # the compose network, so outbound IPv6 (and dual-stack sites like
+    # api.github.com) can silently stall under bridge networking. Under
+    # host mode there's no separate container stack to configure - it's
+    # just the host's own, so this is unneeded, but note `ports:` is not
+    # compatible with `network_mode: host` and is dropped in favor of it;
+    # the daemon binds directly to the host's PASEO_LISTEN port instead.
+    network_mode: host
     volumes:
       # Persistent daemon state and agent credentials/config (~/.codex,
       # Paseo's own ~/.paseo state, etc).

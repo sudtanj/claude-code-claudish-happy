@@ -45,6 +45,18 @@ current directory is mounted at `/workspace` for Codex sessions to work in;
 `~/home/paseo` (Paseo's own state, plus `~/.codex`) persists in the
 `paseo-home` named volume across restarts.
 
+Both compose files use `network_mode: host` instead of a published port -
+the container shares the host's network stack directly rather than going
+through Docker's NATed bridge network. This matters if your host is
+IPv6-only/IPv6-preferred: Docker's default bridge only NATs IPv4 unless you
+separately configure IPv6 on the Docker daemon and the network, so outbound
+requests to dual-stack hosts (like `api.github.com`, for `gh`/git operations)
+can silently hang under bridge networking instead of failing fast. Under
+host networking there's no separate stack to configure - the container
+just uses whatever the host itself can already reach. The tradeoff is the
+usual one for host networking: no port remapping/isolation, and
+`PASEO_LISTEN`'s port is the actual host port.
+
 You can also run Codex directly inside the running container, per Paseo's
 own docs:
 
