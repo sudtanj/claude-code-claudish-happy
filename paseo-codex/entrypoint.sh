@@ -34,8 +34,14 @@ export HOME CODEX_HOME
 # Fix it the same way Paseo's own entrypoint fixes freshly-created
 # directories: chown back to paseo:paseo, only when actually running as
 # root (a `docker run --user paseo ...` override needs no fixing at all).
+#
+# Also covers $HOME/.config (gh's config.yml/hosts.yml included) - easy to
+# end up root-owned too if anyone ever runs `docker exec` (which defaults
+# to root, not `--user paseo`) and invokes `gh` or another tool that writes
+# there, permanently breaking it for the `paseo` user afterwards since this
+# is all on the persistent paseo-home volume. Self-heals on every restart.
 if [ "$(id -u)" = "0" ]; then
-    chown -R paseo:paseo "$CODEX_HOME" 2>/dev/null || true
+    chown -R paseo:paseo "$CODEX_HOME" "$HOME/.config" 2>/dev/null || true
 fi
 
 # gh CLI: if GH_TOKEN (or GITHUB_TOKEN) is set, wire it up as a git
